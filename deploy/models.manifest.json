@@ -1,0 +1,90 @@
+{
+  "runtime_revision": "qa-fall-lstm-main-20261007-fall54fix1",
+  "sklearn_version": "1.9.1",
+  "files": [
+    {
+      "path": "models/yolo26n-pose.pt",
+      "bytes": 7878574,
+      "sha256": "eb3bb8268828aeaf515cec23a4bfafd793944a86fe9af94ba7823609c14522a9",
+      "required": true
+    },
+    {
+      "path": "models/yolo26s-pose.pt",
+      "bytes": 24151790,
+      "sha256": "a083adb42303728ae14c4bd6bd56d80da46f82fb2564dbd6f31dcc92ea321646",
+      "required": false
+    },
+    {
+      "path": "models/yolo26m-pose.pt",
+      "bytes": 49036866,
+      "sha256": "2fbf16367022256a226035695c5c389384c6706e8bb8ab8fcd0e7976f05443c4",
+      "required": false
+    },
+    {
+      "path": "models/yolov8n-pose.pt",
+      "bytes": 6832633,
+      "sha256": "c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212",
+      "required": false
+    },
+    {
+      "path": "models/yolov8s-pose.pt",
+      "bytes": 23513657,
+      "sha256": "234314cd8baf62616791aceb9ea6ad5c19f26cf6c0d8f3a1bfce1e23b186cfb3",
+      "required": false
+    },
+    {
+      "path": "models/yolov8m-pose.pt",
+      "bytes": 53266977,
+      "sha256": "dbe539ea268db2534390942cfdf206e521f376f19e5415967a57f6a2ddfa3c90",
+      "required": false
+    },
+    {
+      "path": "best_lstm_model.pth",
+      "bytes": 47941667,
+      "sha256": "282ad258fe83bbe975ca90f6228cd51b05e2f97b934e698ff61a7cc3319245fb",
+      "required": true
+    },
+    {
+      "path": "Fall/models_yolo/ai1_isolation_forest_yolo.pkl",
+      "bytes": 2612153,
+      "sha256": "f3a3066eda0e25bc60b1864fae376be73323a66c749e623186ea822a1ef0f524",
+      "required": true
+    },
+    {
+      "path": "Fall/models_yolo/ai1_scaler_yolo.pkl",
+      "bytes": 2607,
+      "sha256": "bcf188a772080cbc0594b6ec1959cac79c7d6634693b8f17d0d4cb92e741e709",
+      "required": true
+    },
+    {
+      "path": "Fall/models_yolo/ai1_threshold_yolo.pkl",
+      "bytes": 117,
+      "sha256": "0b6d944963638eea44c26fb3ee50c17eac2e9b5d7105e71a100088dc336c85ca",
+      "required": true
+    },
+    {
+      "path": "Fall/models_yolo/ai2_fall_detector_yolo.pkl",
+      "bytes": 1662777,
+      "sha256": "1261bdf76d3a4edf3a2375e610ffa0f6e0cea4f3beba3789867b24e943d024a9",
+      "required": true
+    },
+    {
+      "path": "Fall/models_yolo/feature_names_yolo.pkl",
+      "bytes": 760,
+      "sha256": "ab026d101fb1af0bc12dc9428ec184997415ba5ab325a1d9c3248cfcfd2844c4",
+      "required": true
+    },
+    {
+      "path": "models/face/face_detection_yunet_2023mar.onnx",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "required": false
+    },
+    {
+      "path": "models/face/face_recognition_sface_2021dec.onnx",
+      "bytes": 38696353,
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+      "required": false
+    }
+  ]
+}

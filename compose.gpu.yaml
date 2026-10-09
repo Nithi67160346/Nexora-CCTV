@@ -1,0 +1,16 @@
+services:
+  nexora:
+    image: ${NEXORA_GPU_IMAGE:-nexora-server:gpu-v0.1.0-rc.1}
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cu128
+    environment:
+      NEXORA_DEVICE: cuda
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

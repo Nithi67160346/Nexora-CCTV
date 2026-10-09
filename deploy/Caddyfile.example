@@ -1,0 +1,9 @@
+# Caddy 2.8+ on the host; replace all example values before installation.
+# Generate a password hash interactively with: caddy hash-password
+# Protect the entire UI and every API route over HTTPS.
+nexora.example.com {
+    basic_auth {
+        nexora REPLACE_WITH_CADDY_PASSWORD_HASH
+    }
+    reverse_proxy 127.0.0.1:8002
+}

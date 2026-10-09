@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXORA QA v1 — AI Elderly Safety Monitoring System</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#ecfeff', 500: '#06b6d4', 600: '#0891b2', 700: '#0e7490' },
+            slate: { 850: '#151e2e', 900: '#0f172a', 950: '#080d1a' }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.1); }
+    }
+    .live-dot { animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Range Slider Styling */
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      background: #06b6d4;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+      transition: transform 0.1s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .glass-panel {
+      background: linear-gradient(180deg, rgba(21, 30, 46, 0.96), rgba(15, 23, 42, 0.96));
+      backdrop-filter: blur(10px);
+    }
+    .status-ring {
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08);
+    }
+    .critical-pulse {
+      animation: pulse-dot 1.1s ease-in-out infinite;
+    }
+    .control-disabled {
+      opacity: .45;
+      pointer-events: none;
+      filter: grayscale(.45);
+    }
+    @media (max-width: 768px) {
+      header { position: static !important; }
+      main { padding: 0.75rem !important; }
+      #video-wrapper { min-height: 240px; }
+      #events-container { max-height: 420px !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-brand-500 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 shadow-lg">
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <i class="fa-solid fa-shield-heart text-white text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="text-xl font-bold tracking-wider text-white">NEXORA QA v1</span>
+            <span class="text-[11px] font-semibold uppercase tracking-wider bg-brand-500/20 text-brand-400 border border-brand-500/30 px-2 py-0.5 rounded-full">CCTV Core AI</span>
+          </div>
+          <p class="text-xs text-slate-400">ระบบ AI เฝ้าระวังความปลอดภัยและการดูแลผู้สูงอายุ</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS INDICATORS -->
+    <div class="flex items-center space-x-3 sm:space-x-4 text-sm">
+      <div class="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg">
+        <span id="stream-dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+        <span id="stream-status" class="text-xs font-medium text-slate-300">IDLE</span>
+      </div>
+
+      <div class="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg">
+        <i class="fa-solid fa-microchip text-brand-400 text-xs"></i>
+        <span id="device-label" class="text-xs font-mono text-slate-300">CUDA / GPU</span>
+      </div>
+
+      <div class="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg">
+        <i class="fa-solid fa-gauge-high text-emerald-400 text-xs"></i>
+        <span id="fps-label" class="text-xs font-mono text-slate-300">0.0 FPS</span>
+      </div>
+
+      <div class="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg">
+        <i class="fa-solid fa-user-group text-indigo-400 text-xs"></i>
+        <span id="tracks-label" class="text-xs font-mono text-slate-300">0 คน</span>
+      </div>
+
+      <div id="api-health-pill" class="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg status-ring" title="สถานะการเชื่อมต่อระหว่างหน้าเว็บกับ API">
+        <span id="api-health-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span id="api-health-text" class="text-[11px] font-medium text-amber-300">CONNECTING</span>
+      </div>
+
+      <button onclick="openFaceManager()" title="จัดการใบหน้า" class="text-slate-300 hover:text-white px-3 py-2 rounded-lg bg-slate-850 border border-slate-800">ใบหน้า</button>
+      <button onclick="toggleSettingsModal()" title="ตั้งค่าระบบ" class="text-slate-400 hover:text-white p-2 rounded-lg bg-slate-850 border border-slate-800 hover:border-slate-700 transition">
+        <i class="fa-solid fa-sliders"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- CLINICAL / HUMAN-IN-THE-LOOP DISCLAIMER -->
+  <div class="bg-amber-950/40 border-b border-amber-500/30 px-6 py-2 flex items-center justify-between text-xs text-amber-200">
+    <div class="flex items-center space-x-2.5">
+      <i class="fa-solid fa-circle-exclamation text-amber-400 text-sm"></i>
+      <span><strong>Human-in-the-loop:</strong> ระบบทำหน้าที่เป็นผู้ช่วยเฝ้าระวัง — ทุกเหตุการณ์สำคัญต้องมีบุคลากร/ผู้ดูแลตรวจสอบและยืนยัน ไม่ใช่อุปกรณ์วินิจฉัยทางการแพทย์อัตโนมัติ</span>
+    </div>
+    <span class="text-[11px] text-amber-400/80 font-mono hidden md:inline">Quality Gate: Assistive Only</span>
+  </div>
+
+  <!-- MAIN DASHBOARD CONTENT -->
+  <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-[1920px] w-full mx-auto">
+
+    <!-- LEFT COLUMN: VIDEO VIEWPORT & CONTROLS & TIMELINE SCRUBBER (2 SPAN) -->
+    <div class="xl:col-span-2 flex flex-col space-y-4" style="min-width:0">
+
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center gap-3 text-xs">
+        <label for="camera-profile-selector" class="font-semibold">กล้อง / ห้องทดลอง</label>
+        <select id="camera-profile-selector" onchange="selectCameraProfile(this.value)" class="bg-slate-800 rounded-lg p-2 min-w-[140px]"></select>
+        <button onclick="openCameraManager()" class="text-brand-400">จัดการห้อง</button>
+        <button onclick="openTelegramManager()" class="text-brand-400">Telegram (เตรียมระบบ)</button>
+        <button onclick="openQaManager()" class="ml-auto bg-brand-600 rounded-lg px-3 py-2 font-semibold">ทดสอบกับ QA</button>
+        <p class="w-full text-slate-400">แต่ละห้องมีเตียงและโซนแยกกัน • เปิดหลายแหล่งภาพได้จากปุ่มใต้ตัวเล่น</p>
+      </section>
+
+      <div id="priority-alert-banner" class="hidden glass-panel border border-red-500/40 rounded-2xl px-4 py-3 shadow-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center critical-pulse">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+              <p class="text-xs tracking-wider text-red-300 font-bold">เหตุสำคัญที่ยังรอตรวจสอบ</p>
+              <p id="priority-alert-text" class="text-sm text-slate-100 mt-0.5">กำลังตรวจสอบเหตุการณ์สำคัญ</p>
+            </div>
+          </div>
+          <button id="priority-playback-button" class="text-[11px] px-2.5 py-1 rounded-lg bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25 transition">ย้อนดูช่วงแจ้งเตือน</button>
+        </div>
+      </div>
+
+      <!-- VIDEO VIEWPORT CONTAINER -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col relative group">
+
+        <!-- Video Header Bar -->
+        <div class="bg-slate-850 px-4 py-2.5 flex items-center justify-between border-b border-slate-800 text-xs">
+          <div class="flex items-center space-x-3">
+            <span class="font-semibold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-video text-brand-400"></i>
+              <span id="active-source-title">กล้องวงจรปิด / วิดีโอหลัก</span>
+            </span>
+            <span id="weights-badge" class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[10px] font-mono">yolo26s-pose</span>
+            <span id="runtime-badge" class="text-[10px] text-cyan-300 break-all">เว็บหลัก Fall V2 + LSTM</span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button onclick="toggleZoneDrawing('wandering')" id="btn-draw-wandering" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-draw-polygon text-amber-400"></i> วาดเขตพลัดหลง
+            </button>
+            <button onclick="toggleZoneDrawing('location')" id="btn-draw-location" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-bed text-blue-400"></i> วาดโซนเตียง
+            </button>
+            <button onclick="clearZones()" title="ล้างโซนทั้งหมดออกจากวิดีโอ" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-red-900/40 text-slate-300 hover:text-red-300 text-xs flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-trash-can text-red-400"></i> ล้างโซนทั้งหมด
+            </button>
+          </div>
+        </div>
+
+        <!-- Video Player Display with Canvas Overlay -->
+        <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden" id="video-wrapper">
+          <!-- Placeholder when idle -->
+          <div id="video-placeholder" class="flex flex-col items-center justify-center text-slate-500 space-y-3">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center text-2xl text-slate-400">
+              <i class="fa-solid fa-play"></i>
+            </div>
+            <p id="stream-placeholder-message" class="text-sm font-medium px-4 text-center">เลือกคลิปตัวอย่างด้านล่างหรือกดเริ่มเพื่อรับชมการตรวจจับสด</p>
+          </div>
+
+          <!-- Video Stream Feed -->
+          <img id="stream-feed-img" src="" alt="Live Feed" class="w-full h-full object-contain hidden" />
+          <video id="native-video" playsinline muted preload="metadata" class="hidden absolute inset-0 w-full h-full object-contain" aria-label="ตัวเล่นคลิป"></video>
+          <canvas id="ai-playback-overlay" class="hidden absolute inset-0 w-full h-full pointer-events-none"></canvas>
+          <div id="loading-status" class="hidden absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-cyan-300 gap-3 z-30" role="status" aria-live="polite"><i class="fa-solid fa-spinner fa-spin text-3xl"></i><strong id="loading-message">กำลังเปิดภาพ...</strong><span id="loading-elapsed" class="text-xs"></span></div>
+
+          <!-- Interactive Zone Drawing Canvas -->
+          <canvas id="zone-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+
+          <!-- Notification toast on video -->
+
+          <!-- Drawing Mode Banner -->
+          <div id="drawing-banner" class="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-brand-500 text-brand-300 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-3 shadow-2xl hidden z-20">
+            <i class="fa-solid fa-pen-ruler text-brand-400"></i>
+            <span id="drawing-instructions">คลิกบนวิดีโอเพื่อวาดจุดโซน (อย่างน้อย 3 จุด)</span>
+            <input id="zone-name-input" placeholder="ชื่อเตียง/เขต เช่น เตียง A" maxlength="100" class="bg-slate-800 rounded p-2 w-36" aria-label="ชื่อเตียงหรือเขต">
+            <button id="btn-save-zone" onclick="saveDrawnZone()" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-1 rounded-lg text-xs font-bold transition">บันทึกโซน</button>
+            <button onclick="clearCurrentDrawing()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-lg text-xs transition">ล้างจุดวาด</button>
+            <button onclick="cancelZoneDrawing()" class="text-slate-400 hover:text-white px-2 py-1 text-xs">ยกเลิก</button>
+          </div>
+        </div>
+
+        <!-- TIMELINE SCRUBBER / SEEK BAR (กรอคลิป) -->
+        <div id="timeline-container" class="bg-slate-900 px-4 pt-3 pb-2 border-t border-slate-800 flex flex-col space-y-2">
+          <!-- Time indicator and seek bar -->
+          <div class="flex items-center space-x-3">
+            <span id="time-current" class="text-xs font-mono text-cyan-400 min-w-[42px] text-right">00:00</span>
+            <div class="relative flex-1 flex items-center">
+              <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1"
+                     oninput="onSeekSliderInput(this.value)"
+                     onchange="onSeekSliderChange(this.value)"
+                     class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500">
+            </div>
+            <span id="time-duration" class="text-xs font-mono text-slate-400 min-w-[42px]">00:00</span>
+          </div>
+
+          <!-- Scrubbing Controls & Playback Action Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div class="flex items-center space-x-2">
+              <!-- Play / Pause -->
+              <button id="btn-play" onclick="togglePlay()" class="px-3.5 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-medium text-xs flex items-center gap-1.5 transition shadow-lg shadow-brand-500/20">
+                <i class="fa-solid fa-play"></i> <span id="btn-play-text">เล่น</span>
+              </button>
+
+              <!-- Skip backward 10s -->
+              <button onclick="seekDelta(-10)" title="ย้อนกลับ 10 วินาที" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition">
+                <i class="fa-solid fa-backward-step"></i> -10s
+              </button>
+
+              <!-- Skip backward 5s -->
+              <button onclick="seekDelta(-5)" title="ย้อนกลับ 5 วินาที" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition">
+                <i class="fa-solid fa-rotate-left"></i> -5s
+              </button>
+
+              <!-- Skip forward 5s -->
+              <button onclick="seekDelta(5)" title="ไปข้างหน้า 5 วินาที" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition">
+                +5s <i class="fa-solid fa-rotate-right"></i>
+              </button>
+
+              <!-- Skip forward 10s -->
+              <button onclick="seekDelta(10)" title="ไปข้างหน้า 10 วินาที" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition">
+                +10s <i class="fa-solid fa-forward-step"></i>
+              </button>
+
+              <!-- Stop -->
+              <button id="btn-stop" onclick="stopStream()" title="หยุด" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition">
+                <i class="fa-solid fa-stop"></i>
+              </button>
+            </div>
+
+            <!-- Playback Speed & Loop Selector -->
+            <div class="flex items-center space-x-2 text-xs">
+              <label class="text-xs text-cyan-300"><input id="clip-loop" type="checkbox" onchange="setClipLoop(this.checked)"> วนคลิป</label>
+              <label class="text-xs text-cyan-300" title="คลิปไม่เกิน 60 วินาทีรอวิเคราะห์ครบก่อนเล่น คลิปยาวรอผลช่วงเริ่มต้น หลังกรอรอผลตรงเวลา จากนั้นเล่นต่อเนื่อง"><input id="wait-for-ai" type="checkbox" checked onchange="setWaitForAI(this.checked)"> รอ AI ก่อนเล่น</label>
+              <span class="text-slate-400 text-[11px]">ความเร็ว:</span>
+              <div class="flex items-center bg-slate-850 border border-slate-800 rounded-lg p-0.5">
+                <button onclick="setSpeed(0.5)" id="speed-05" class="px-2 py-0.5 rounded text-[11px] text-slate-400 hover:text-white">0.5x</button>
+                <button onclick="setSpeed(1.0)" id="speed-10" class="px-2 py-0.5 rounded text-[11px] bg-brand-500 text-white font-semibold">1.0x</button>
+                <button onclick="setSpeed(2.0)" id="speed-20" class="px-2 py-0.5 rounded text-[11px] text-slate-400 hover:text-white">2.0x</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="camera-warning" class="hidden px-4 py-2 text-sm text-amber-300 bg-amber-950/40" role="status"></div>
+        <!-- Video Source Selection Footer -->
+        <div class="bg-slate-850 px-4 py-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <!-- Video Source Selector Dropdown -->
+          <div class="flex items-center space-x-2 flex-1 max-w-xl">
+            <span class="text-xs text-slate-400 whitespace-nowrap"><i class="fa-solid fa-film text-brand-400"></i> แหล่งคลิป:</span>
+            <select id="sample-selector" onchange="onSelectSample(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand-500 w-full truncate">
+              <option value="">-- เลือกคลิปตัวอย่างจาก Dataset หรือกล้อง Webcam --</option>
+              <option value="0">📷 กล้องหมายเลข 0 (เครื่องที่รันระบบ)</option>
+              <option value="1">📷 กล้องหมายเลข 1 — ลองเลือกเมื่อกล้อง 0 จอดำ</option>
+              <option value="2">📷 กล้องหมายเลข 2</option>
+              <option value="3">📷 กล้องหมายเลข 3</option>
+            </select>
+          </div>
+
+          <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1.5 transition whitespace-nowrap">
+            <i class="fa-solid fa-cloud-arrow-up text-brand-400"></i> อัปโหลดวิดีโอ
+            <input type="file" id="video-upload-input" accept="video/*" multiple onchange="handleFileUpload(this.files)" class="hidden">
+          </label>
+        </div>
+
+      </div>
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 text-xs">
+        <div class="flex flex-wrap gap-3 items-center">
+          <label>รันโมเดลด้วย <select id="inference-device" class="bg-slate-800 rounded p-2"><option value="cpu">CPU</option><option value="cuda">GPU (NVIDIA)</option></select></label>
+          <label>โมเดลคน / ข้อต่อ <select id="pose-model" class="bg-slate-800 rounded p-2"><option value="yolo26n-pose.pt">YOLO26n-pose</option><option value="yolo26s-pose.pt" disabled>YOLO26s-pose</option><option value="yolo26m-pose.pt" disabled>YOLO26m-pose</option><option value="yolov8n-pose.pt" disabled>YOLOv8n-pose</option><option value="yolov8s-pose.pt" disabled>YOLOv8s-pose</option><option value="yolov8m-pose.pt" disabled>YOLOv8m-pose</option></select></label>
+          <button id="apply-runtime-button" onclick="applyRuntimeChoices()" class="bg-brand-600 rounded px-3 py-2">ใช้กับตัวเล่นหลัก (เริ่มใหม่)</button>
+          <button onclick="openMultiView()" class="bg-cyan-700 rounded px-3 py-2">เปิดหลายกล้อง / หลายคลิป</button>
+          <button onclick="openViolenceTest()" class="bg-indigo-700 rounded px-3 py-2">เทียบผลทั้งคลิป (LSTM)</button>
+          <button onclick="document.getElementById('recording-browser').open=true;loadRecordingList()" class="bg-slate-700 rounded px-3 py-2">เปิดวิดีโอที่บันทึกไว้</button>
+        </div>
+        <p id="playback-progress" role="status" class="text-cyan-300">เลือกคลิปเพื่อเริ่ม</p>
+        <p id="main-violence-result" role="status" class="text-amber-300"></p>
+        <p id="main-fall-result" role="status" class="text-amber-300"></p>
+        <p id="runtime-choice-message" class="text-slate-400"></p>
+        <p class="text-amber-300">ตรวจล้ม 54 ค่า: ใช้ YOLO 17 จุดร่วมกับ RandomForest และกฎท่านอน เก็บ 6 เฟรมก่อนตัดสิน ใช้คะแนน RF ≥40% หรือกฎสัดส่วนตัวตาม Project.py และสัดส่วนภาพที่เข้าเงื่อนไข ≥30% จึงเตือน คะแนน RF ไม่ใช่ความแม่นยำ ยังต้องตรวจภาพเพื่อแยกการล้มกับการนอนโดยตั้งใจ</p>
+        <p class="text-amber-300">ตัวเล่นหลักใช้ LSTM ตรวจทีละช่วง 16 เฟรม แสดงคะแนนบนภาพและเก็บเหตุให้รีวิว • คะแนนโมเดลไม่ใช่ความแม่นยำ และไม่ระบุผู้ก่อเหตุ</p>
+        <p id="runtime-active-message" role="status" class="text-emerald-300"></p>
+        <p id="runtime-performance-message" class="text-slate-400" role="status"></p>
+        <details class="text-slate-400"><summary class="cursor-pointer">ขั้นสูง: การอ่านไฟล์วิดีโอ</summary><p class="mt-2">ส่วนนี้ใช้เปิดไฟล์ภาพ ไม่ใช่อุปกรณ์ที่รัน YOLO ปกติใช้ CPU ได้</p><label>อ่านไฟล์ด้วย <select id="decode-device" class="bg-slate-800 rounded p-2"><option value="cpu">CPU (ปกติ)</option><option value="cuda">GPU (ต้องมี FFmpeg)</option></select></label></details>
+        <details id="recording-browser"><summary class="cursor-pointer font-semibold">วิดีโอจาก webcam ที่บันทึกไว้ • ย้อนหลัง 24 ชั่วโมง</summary><p class="mt-2 text-slate-400">เลือกช่วงเวลาเพื่อดูย้อนหลัง แบ่งไฟล์ช่วงละ 10 วินาที ไฟล์จะถูกลบเมื่อครบ 24 ชั่วโมง</p><div id="recording-list" class="space-y-2 mt-2" style="max-height:240px;overflow:auto"></div></details>
+      </section>
+      <section id="multi-view" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <h3 class="font-bold text-sm">หลายแหล่งภาพพร้อมกัน (สูงสุด 4 แหล่ง รวมตัวเล่นหลัก)</h3>
+        <p class="text-xs text-cyan-300">ใช้เมื่อต้องการเปิด webcam หลายตัว หรือวิเคราะห์หลายคลิปพร้อมกัน ถ้าใช้คลิปเดียว ให้ดูตัวเล่นหลักด้านบนได้เลย</p>
+        <p class="text-xs text-slate-400">webcam ผ่านเบราว์เซอร์ใช้ได้กับ Docker • บันทึกเฉพาะภาพ ไม่มีเสียง เก็บ 24 ชั่วโมง • เมื่อปิดแท็บจะหยุดกล้องของแท็บนี้</p>
+        <div class="flex gap-2 flex-wrap"><button onclick="listBrowserCameras()" class="bg-cyan-700 rounded px-3 py-2 text-xs">ค้นหา webcam</button><button onclick="startSelectedClips()" class="bg-slate-700 rounded px-3 py-2 text-xs">เปิดคลิปที่เลือกพร้อมกัน</button></div>
+        <div id="browser-camera-list" class="space-y-2 text-xs" style="max-height:180px;overflow:auto"></div><div id="clip-queue" class="space-y-2 text-xs"></div>
+        <p id="multi-message" role="status" class="text-amber-300 text-xs"></p>
+        <div id="multi-grid" class="grid grid-cols-1 xl:grid-cols-2 gap-4"></div>
+      </section>
+
+      <!-- ACTIVE MONITORED FEATURES STATUS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-brain text-brand-400"></i> สถานะโมดูล AI ที่ทำงานพร้อมกันบน Shared Core
+        </h4>
+        <p id="enabled-feature-summary" class="text-cyan-300 text-xs mb-3">กำลังอ่านฟีเจอร์ที่เปิดใช้งาน...</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+
+          <div id="feature-card-fall" class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center text-sm">
+              <i class="fa-solid fa-person-falling"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-200">F3 ตรวจล้ม V2</p>
+              <span id="health-fall" class="text-[10px] text-slate-400 font-medium">กำลังอ่านสถานะ</span>
+            </div>
+          </div>
+
+          <div id="feature-card-wandering" class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-sm">
+              <i class="fa-solid fa-person-walking-dashed-line-arrow-right"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-200">F5 พลัดหลง</p>
+              <span id="health-wandering" class="text-[10px] text-slate-400 font-medium">กำลังอ่านสถานะ</span>
+            </div>
+          </div>
+
+          <div id="feature-card-violence" class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center text-sm">
+              <i class="fa-solid fa-hand-fist"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-200">F1 ทำร้าย (LSTM)</p>
+              <span id="health-violence" class="text-[10px] text-slate-400 font-medium">กำลังอ่านสถานะ</span>
+            </div>
+          </div>
+
+          <div id="feature-card-location" class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm">
+              <i class="fa-solid fa-map-location-dot"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-200">F4 ตำแหน่ง/เตียง</p>
+              <span id="health-location" class="text-[10px] text-slate-400 font-medium">กำลังอ่านสถานะ</span>
+            </div>
+          </div>
+
+        </div>
+        <p id="health-capture" class="text-xs text-slate-300 mt-3" role="status">แหล่งภาพ: กำลังอ่านสถานะ</p>
+        <p id="health-detector" class="text-xs text-slate-300 mt-1">ตัวตรวจจับ: กำลังอ่านสถานะ</p>
+        <div id="health-details" class="text-xs text-amber-300 mt-2 space-y-1"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: REAL-TIME EVENTS FEED & HUMAN REVIEW (1 SPAN) -->
+    <div class="flex flex-col space-y-4" style="min-width:0">
+
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs space-y-2">
+        <div class="flex justify-between gap-2"><strong>ผลทดสอบ QA</strong><button onclick="openQaManager()" class="text-brand-400">ตั้งการทดสอบ</button></div>
+        <p id="qa-status">ยังไม่มีรอบทดสอบ • เลือกคลิป แล้วกดตั้งการทดสอบเพื่อระบุช่วงเหตุจริง</p>
+        <div id="qa-result" class="space-y-1 text-slate-300"></div>
+        <button id="qa-download" onclick="window.location.href='/api/qa/report'" disabled class="disabled:opacity-40 text-brand-400">ดาวน์โหลดรายงาน JSON</button>
+      </section>
+
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs space-y-2">
+        <div class="flex justify-between items-center gap-2">
+          <p id="face-runtime-status" class="font-semibold text-slate-200">ใบหน้า: กำลังอ่านสถานะ</p>
+          <button onclick="openFaceManager()" class="text-brand-400">จัดการ</button>
+        </div>
+        <div id="face-active-people" class="text-slate-300 space-y-1"></div>
+      </section>
+
+      <!-- REVIEW STATS SUMMARY CARD -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-clipboard-check text-brand-400"></i> สรุปการตรวจสอบเหตุการณ์
+          </h3>
+          <span class="text-[10px] font-mono bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Human Review</span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-2 text-center text-xs">
+          <div class="bg-slate-850 p-2 rounded-xl border border-slate-800">
+            <p class="text-slate-400 text-[10px]">ทั้งหมด</p>
+            <p id="stat-total" class="text-base font-bold text-white mt-0.5">0</p>
+          </div>
+          <div class="bg-slate-850 p-2 rounded-xl border border-slate-800">
+            <p class="text-amber-400 text-[10px]">รอตรวจ</p>
+            <p id="stat-pending" class="text-base font-bold text-amber-400 mt-0.5">0</p>
+          </div>
+          <div class="bg-slate-850 p-2 rounded-xl border border-slate-800">
+            <p class="text-emerald-400 text-[10px]">ยืนยันจริง</p>
+            <p id="stat-confirmed" class="text-base font-bold text-emerald-400 mt-0.5">0</p>
+          </div>
+          <div class="bg-slate-850 p-2 rounded-xl border border-slate-800">
+            <p class="text-red-400 text-[10px]">เตือนผิด (FP)</p>
+            <p id="stat-false" class="text-base font-bold text-red-400 mt-0.5">0</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- LIVE EVENT FEED -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-1 flex flex-col shadow-xl min-h-[500px]">
+        <div class="flex flex-wrap gap-2 items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center space-x-2">
+            <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-bell text-amber-400"></i> เหตุการณ์ทุกห้อง (รอบนี้)
+            </h3>
+            <span id="unread-badge" class="bg-red-500/20 border border-red-500/30 text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
+          </div>
+
+          <div class="flex flex-wrap gap-2 items-center text-xs">
+            <button onclick="setEventFilter('all')" id="filter-all" class="px-2 py-0.5 rounded bg-brand-500/20 text-brand-400 font-semibold text-[11px]">ทั้งหมด</button>
+            <button onclick="setEventFilter('pending')" id="filter-pending" class="px-2 py-0.5 rounded hover:bg-slate-800 text-slate-400 text-[11px]">รอตรวจ</button>
+            <button onclick="setEventFilter('critical')" id="filter-critical" class="px-2 py-0.5 rounded hover:bg-slate-800 text-slate-400 text-[11px]">สำคัญ</button>
+            <details class="relative" id="event-display-options">
+              <summary id="event-category-summary" class="bg-slate-800 rounded p-2 cursor-pointer">หมวดที่แสดง: ทุกหมวด</summary>
+              <div class="absolute right-0 bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-2 shadow-lg z-30" style="width:240px">
+                <div class="flex gap-3"><button onclick="setAllEventCategories(true)" class="text-cyan-300">เลือกทั้งหมด</button><button onclick="setAllEventCategories(false)" class="text-slate-400">ซ่อนทั้งหมด</button></div>
+                <label class="block"><input id="show-category-fall" type="checkbox" checked onchange="setEventCategory('fall',this.checked)"> การล้ม</label>
+                <label class="block"><input id="show-category-wandering" type="checkbox" checked onchange="setEventCategory('wandering',this.checked)"> พลัดหลง / ข้ามเขต</label>
+                <label class="block"><input id="show-category-violence" type="checkbox" checked onchange="setEventCategory('violence',this.checked)"> การปะทะ</label>
+                <label class="block"><input id="show-category-location" type="checkbox" checked onchange="setEventCategory('location',this.checked)"> ตำแหน่ง / เตียง</label>
+                <label class="block"><input id="show-category-other" type="checkbox" checked onchange="setEventCategory('other',this.checked)"> อื่น ๆ</label>
+                <p class="text-slate-400">จำตัวเลือกในเบราว์เซอร์นี้ • AI ยังบันทึกเหตุการณ์ตามเดิม</p>
+              </div>
+            </details>
+            <label class="text-xs"><input id="show-last-seen" type="checkbox" onchange="setLastSeenNotifications(this.checked)"> แจ้งตำแหน่งล่าสุด</label>
+          </div>
+        </div>
+
+        <div class="pt-3">
+          <p id="event-display-count" class="text-xs text-slate-400 mb-2" role="status"></p>
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+            <input id="event-search" oninput="eventSearch=this.value.toLowerCase(); renderEvents(lastEvents)" placeholder="ค้นหาเหตุการณ์, Track ID, ข้อความ..." class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-[11px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+
+        <!-- Event Cards Scroll Container -->
+        <div id="events-container" class="flex-1 overflow-y-auto space-y-3 mt-3 pr-1 custom-scroll max-h-[600px]">
+          <div class="text-center py-12 text-slate-500 text-xs">
+            <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+            ยังไม่มีเหตุการณ์แจ้งเตือนในขณะนี้
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <div id="face-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="face-modal-title">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-xl">
+      <div class="flex justify-between items-center">
+        <h2 id="face-modal-title" class="font-bold">จัดการใบหน้า</h2>
+        <button onclick="closeFaceManager()" aria-label="ปิดหน้าจัดการใบหน้า" class="text-slate-300 px-2 py-1">✕</button>
+      </div>
+      <label class="block text-sm">การใช้งาน
+        <select id="face-mode" onchange="changeFaceMode()" class="mt-2 w-full bg-slate-950 border border-slate-700 rounded-lg p-2">
+          <option value="off">ปิดระบบใบหน้า</option>
+          <option value="detect">ตรวจพบใบหน้า — ไม่ระบุชื่อ</option>
+          <option value="recognize">ระบุชื่อคนที่ลงทะเบียน</option>
+        </select>
+      </label>
+      <p id="face-readiness" class="text-xs text-slate-400"></p>
+      <p id="face-message" role="status" aria-live="polite" class="text-sm text-amber-300"></p>
+      <form id="face-enroll-form" class="space-y-3 border-t border-slate-800 pt-4">
+        <h3 class="font-semibold text-sm">ลงทะเบียนคนใหม่</h3>
+        <label class="block text-xs">ชื่อที่แสดง<input name="name" required maxlength="60" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-2"></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-xs">บทบาท<select name="role" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-2"><option value="resident">ผู้พัก</option><option value="caregiver">เจ้าหน้าที่</option><option value="visitor">ผู้มาเยี่ยม</option></select></label>
+          <label class="block text-xs">เตียงประจำ (ถ้ามี)<input name="assigned_bed" maxlength="64" placeholder="เช่น bed_01" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-2"></label>
+        </div>
+        <label class="block text-xs">ภาพใบหน้า 3–12 รูป แต่ละรูปมีหน้าเดียว<input id="face-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required class="block mt-2 w-full text-slate-300"></label>
+        <p class="text-xs text-slate-400">ใช้ภาพชัดหลายมุม ขนาดไม่เกิน 8 MB ต่อรูป ระบบเก็บข้อมูลสำหรับเทียบใบหน้าในเครื่อง ไม่เก็บภาพต้นฉบับ</p>
+        <label class="flex gap-2 items-start text-xs text-slate-300"><input type="checkbox" name="consent" value="true" required class="mt-0.5">เจ้าของภาพยินยอมให้ลงทะเบียนและจดจำใบหน้าแล้ว</label>
+        <button id="face-enroll-submit" type="submit" class="bg-brand-500 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">ลงทะเบียน</button>
+      </form>
+      <section class="border-t border-slate-800 pt-4"><h3 class="font-semibold text-sm mb-2">คนที่ลงทะเบียน</h3><div id="face-registered-people" class="text-xs text-slate-300"></div></section>
+    </div>
+  </div>
+
+  <div id="violence-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <section role="dialog" aria-modal="true" aria-labelledby="violence-title" class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex justify-between gap-3 items-center"><h3 id="violence-title" class="font-bold">ทดสอบการทำร้ายร่างกาย • ResNet18 + LSTM</h3><button onclick="closeViolenceTest()" aria-label="ปิดผลทดสอบ" class="text-slate-300">ปิด</button></div>
+      <p class="text-sm text-slate-300">ใช้เทียบกับผลทีละช่วงในตัวเล่นหลัก เลือกหรืออัปโหลดคลิปในตัวเล่นหลัก แล้วกดทดสอบ โมเดลใช้ 16 เฟรมกระจายทั่วคลิปเพื่อให้ผลของทั้งคลิป หากคลิปยาวอาจไม่เก็บภาพช่วงเกิดเหตุ</p>
+      <p class="text-xs text-amber-300">ผลนี้ไม่ระบุบุคคลหรือเวลาเกิดเหตุ และไม่เพิ่มแจ้งเตือนรายคนบนเว็บ</p>
+      <p id="violence-source" class="text-sm text-cyan-300 break-all"></p>
+      <div class="flex items-center gap-3 flex-wrap"><label class="text-sm">อุปกรณ์ <select id="violence-device" class="bg-slate-800 rounded p-2"><option value="cpu">CPU</option><option value="cuda">GPU (NVIDIA)</option></select></label><button id="violence-start" onclick="runViolenceClip()" class="bg-indigo-600 rounded px-4 py-2 text-sm">ทดสอบคลิปที่เลือก</button></div>
+      <p id="violence-message" role="status" aria-live="polite" class="text-sm text-slate-300"></p>
+      <div id="violence-result" class="text-sm text-emerald-300 whitespace-pre-line"></div>
+      <button id="violence-export" onclick="exportViolenceResult()" class="hidden bg-slate-800 rounded px-3 py-2 text-xs">ดาวน์โหลดผลทดสอบ JSON</button>
+    </section>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="video-toast" role="status" aria-live="polite" class="fixed bottom-4 left-4 right-4 md:right-auto bg-slate-900 border border-brand-500/40 text-brand-300 px-4 py-3 rounded-lg text-sm shadow-xl hidden transition-opacity z-[100]" style="z-index:100"></div>
+  <div id="settings-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-brand-400"></i> ตั้งค่าระบบ AI CCTV
+        </h3>
+        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <h4 class="font-bold text-slate-300 uppercase tracking-wider text-[11px]">เปิด/ปิด การทำงานของฟีเจอร์ AI</h4>
+
+<label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-850 border border-slate-800">
+          <div>
+            <p class="font-semibold text-slate-200">ตรวจจับการล้ม (Fall Detection)</p>
+            <p class="text-slate-400 text-[10px]">ตรวจมุมระนาบลำตัวและอัตราส่วนท่าทางแบบเรียลไทม์</p>
+          </div>
+          <input type="checkbox" id="toggle-fall" onchange="toggleFeatureState('fall', this.checked)" class="w-4 h-4 accent-brand-500 rounded">
+        </label>
+
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-850 border border-slate-800">
+          <div>
+            <p class="font-semibold text-slate-200">ตรวจจับการพลัดหลง (Wandering / Line Crossing)</p>
+            <p class="text-slate-400 text-[10px]">แจ้งเตือนเมื่อเดินเข้า/ออกจากเส้นหรือโซนที่กำหนด</p>
+          </div>
+          <input type="checkbox" id="toggle-wandering" checked onchange="toggleFeatureState('wandering', this.checked)" class="w-4 h-4 accent-brand-500 rounded">
+        </label>
+
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-850 border border-slate-800">
+          <div>
+            <p class="font-semibold text-slate-200">ตรวจจับการปะทะ / ความรุนแรง (Interaction)</p>
+            <p class="text-slate-400 text-[10px]">โมดูลประเมินระยะประชิดและการเคลื่อนไหวที่ผิดปกติ</p>
+          </div>
+          <input type="checkbox" id="toggle-violence" checked onchange="toggleFeatureState('violence', this.checked)" class="w-4 h-4 accent-brand-500 rounded">
+        </label>
+
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-850 border border-slate-800">
+          <div>
+            <p class="font-semibold text-slate-200">ติดตามตำแหน่งและโซนเตียง (Location / Bed)</p>
+            <p class="text-slate-400 text-[10px]">บันทึกสถานะการอยู่บนเตียงและการเคลื่อนย้าย</p>
+          </div>
+          <input type="checkbox" id="toggle-location" checked onchange="toggleFeatureState('location', this.checked)" class="w-4 h-4 accent-brand-500 rounded">
+        </label>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800 flex justify-end">
+        <button onclick="toggleSettingsModal()" class="px-4 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-medium text-xs">เสร็จสิ้น</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <div id="camera-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <section class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-4 text-sm">
+      <div class="flex justify-between"><h2 class="font-bold">โปรไฟล์กล้อง / ห้องทดลอง</h2><button onclick="closeProductModal('camera')" aria-label="ปิดจัดการห้อง">✕</button></div>
+      <p class="text-xs text-slate-400">ใช้ MP4 แทนกล้องได้ โซนและสวิตช์ฟีเจอร์เป็นของแต่ละห้อง เก็บระหว่างเปิดระบบรอบนี้ หากต้องการใช้รอบหน้าให้ส่งออกไฟล์แล้วนำเข้ากลับมา</p>
+      <div id="camera-list" class="space-y-2"></div>
+      <label class="block">ชื่อห้อง / กล้อง<input id="camera-name" maxlength="100" placeholder="เช่น ห้องทดลอง B" class="block w-full bg-slate-800 rounded-lg p-2 mt-1"></label>
+      <label class="block">แหล่งภาพ (เว้นว่างแล้วเลือกคลิปภายหลังได้)<input id="camera-source" maxlength="2048" placeholder="ไฟล์คลิป, หมายเลข webcam หรือ RTSP" class="block w-full bg-slate-800 rounded-lg p-2 mt-1"></label>
+      <div class="flex flex-wrap gap-3"><button onclick="createCameraProfile()" class="bg-brand-600 rounded-lg px-3 py-2">สร้างห้องใหม่</button><button onclick="editCameraProfile()" class="bg-slate-800 rounded-lg px-3 py-2">แก้ชื่อ/แหล่งภาพของห้องที่เลือก</button></div>
+      <div class="flex gap-4 text-brand-400 text-xs"><a href="/api/cameras/export">ส่งออกโปรไฟล์ JSON</a><a href="/api/diagnostics/export">ส่งออกรายงานปัญหาให้ QA</a><label class="cursor-pointer">นำเข้าโปรไฟล์ JSON<input type="file" accept=".json" class="hidden" onchange="importCameraProfiles(this.files)"></label></div>
+      <p id="camera-message" class="text-amber-300 text-xs" role="status"></p>
+    </section>
+  </div>
+
+  <div id="qa-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <section class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-4 text-sm">
+      <div class="flex justify-between"><h2 class="font-bold">ทดสอบ QA จากคลิปที่เลือก</h2><button onclick="closeProductModal('qa')" aria-label="ปิดตั้งค่า QA">✕</button></div>
+      <p id="qa-source-label" class="text-xs text-slate-400 break-all"></p>
+      <ol class="list-decimal pl-5 text-xs text-cyan-200 space-y-1"><li>อัปโหลดหรือเลือกคลิป แล้วดูว่าเกิดเหตุจริงเมื่อไร</li><li>เช่น ล้มช่วงวินาที 3–4 ให้กรอกเริ่ม 3 จบ 4 แล้วกด “เพิ่มช่วงเหตุจริง”</li><li>ถ้าคลิปไม่มีเหตุ ให้ติ๊ก “ฉันตรวจคลิปแล้ว ไม่มีเหตุ” แทน</li><li>กด “เริ่มทดสอบทั้งคลิป” รอจบ แล้วดูจำนวนเจอ / พลาด / เตือนผิด และดาวน์โหลด JSON</li></ol>
+      <p class="text-xs text-slate-400">ดูคลิปและระบุช่วงเหตุจริงก่อนทดสอบ ระบบจะเริ่มคลิปจากต้นจนจบ ไม่วนซ้ำ พักได้ แต่ต้องหยุด QA ก่อนกรอคลิป ผลเป็นการทดสอบคลิปที่ระบุ ไม่ใช่การรับรองความแม่นยำทั้งหมด</p>
+      <label class="block">ชนิดเหตุที่ทดสอบ<select id="qa-event-type" onchange="updateQaZones()" class="block bg-slate-800 rounded-lg p-2 mt-1 w-full"><option value="fall_detected">โมเดลตรวจล้ม V2 (ท่าล้มที่ควรตรวจสอบ)</option><option value="fall_posture_review">ท่าทางเสี่ยง (ยังยืนยันจังหวะล้มไม่ได้)</option><option value="violence_detected">LSTM ภาพเสี่ยงทำร้าย</option><option value="high_risk_interaction">การปะทะจากกฎ (ข้อมูลเก่า)</option><option value="wandering_entered_zone">เข้าพื้นที่ที่กำหนด</option><option value="wandering_exited_zone">ออกจากพื้นที่ที่กำหนด</option><option value="location_update">เข้าสู่โซนเตียง/พื้นที่</option></select></label>
+      <label id="qa-zone-label" class="hidden block">โซนที่ทดสอบ<select id="qa-zone" onchange="syncQaLabelScope()" class="block w-full bg-slate-800 rounded-lg p-2 mt-1"></select></label>
+      <div class="flex flex-wrap gap-3 items-end">
+        <label>เริ่มเหตุ (วินาที)<input id="qa-start" type="number" min="0" step="0.1" value="0" class="block bg-slate-800 rounded-lg p-2 w-28"></label>
+        <label>จบเหตุ (วินาที)<input id="qa-end" type="number" min="0" step="0.1" value="0" class="block bg-slate-800 rounded-lg p-2 w-28"></label>
+        <button onclick="addQaLabel()" class="bg-slate-800 rounded-lg p-2">เพิ่มช่วงเหตุจริง</button>
+      </div>
+      <div id="qa-labels" class="space-y-2 text-xs"></div>
+      <label class="flex gap-2 items-start text-xs"><input id="qa-negative" type="checkbox" class="mt-0.5">ฉันตรวจคลิปแล้ว ไม่มีเหตุชนิด/โซนที่เลือก (สำหรับคลิปปกติ)</label>
+      <label class="block text-xs">ยอมรับการเตือนหลังจบช่วงเหตุไม่เกิน (วินาที)<input id="qa-tolerance" type="number" min="0" max="30" step="0.1" value="5" class="block bg-slate-800 rounded-lg p-2 w-28 mt-1"></label>
+      <p id="qa-message" class="text-amber-300 text-xs" role="status"></p>
+      <button id="qa-start-button" onclick="startQaReview()" class="bg-brand-600 rounded-lg px-4 py-2 disabled:opacity-40">เริ่มทดสอบทั้งคลิป</button>
+    </section>
+  </div>
+
+  <div id="telegram-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <section class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-4 text-sm">
+      <div class="flex justify-between"><h2 class="font-bold">Telegram • เตรียมข้อความแจ้งเตือน</h2><button onclick="closeProductModal('telegram')" aria-label="ปิด Telegram">✕</button></div>
+      <p class="text-xs text-amber-300">รอบนี้เก็บเป็นร่างในเว็บเท่านั้น ยังส่งข้อความจริงไม่ได้ ไม่ต้องกรอก Bot Token</p>
+      <label class="flex items-center gap-2"><input id="telegram-enabled" type="checkbox">สร้างร่างเมื่อพบเหตุใหม่</label>
+      <fieldset class="space-y-2 text-xs"><legend class="mb-2">เหตุที่ต้องการแจ้งเตือน</legend>
+        <label class="flex gap-2"><input id="telegram-fall_detected" type="checkbox">สงสัยการล้ม</label>
+        <label class="flex gap-2"><input id="telegram-fall_posture_review" type="checkbox">ท่าทางเสี่ยง (ยังยืนยันจังหวะล้มไม่ได้)</label>
+        <label class="flex gap-2"><input id="telegram-high_risk_interaction" type="checkbox">การปะทะที่ควรตรวจสอบ</label>
+        <label class="flex gap-2"><input id="telegram-wandering_entered_zone" type="checkbox">เข้าพื้นที่ที่กำหนด</label>
+        <label class="flex gap-2"><input id="telegram-wandering_exited_zone" type="checkbox">ออกจากพื้นที่ที่กำหนด</label>
+      </fieldset>
+      <label class="block text-xs">เว้นร่างชนิดเดียวกันต่อห้อง/โซน (วินาที)<input id="telegram-cooldown" type="number" min="0" max="3600" value="30" class="block bg-slate-800 rounded-lg p-2 mt-1 w-28"></label>
+      <div class="flex gap-3"><button onclick="saveTelegramSettings()" class="bg-brand-600 rounded-lg px-3 py-2">บันทึกการเตรียมแจ้งเตือน</button><button onclick="previewTelegram()" class="bg-slate-800 rounded-lg px-3 py-2">ดูข้อความตัวอย่าง</button></div>
+      <pre id="telegram-preview" class="whitespace-pre-wrap bg-slate-950 rounded-xl p-3 text-xs"></pre>
+      <p id="telegram-message" class="text-amber-300 text-xs" role="status"></p>
+      <p class="text-xs text-slate-400">ร่างล่าสุดสูงสุด 100 รายการ เก็บเฉพาะรอบที่เปิดระบบ เหตุเดียวกันจะไม่สร้างซ้ำ ไม่มีการส่งชื่อบุคคล ภาพ หรือคลิป</p>
+      <div id="telegram-drafts" class="space-y-3 text-xs"></div>
+    </section>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    let isStreaming = false;
+    let isPaused = false;
+    let currentSource = "";
+    let eventFilter = 'all';
+    let eventSearch = '';
+    let lastEvents = [];
+    let drawnPoints = [];
+    let drawingMode = null;
+    let drawingSource = '';
+    let analyzedSource = '';
+    let pollInterval = null;
+    let pollBusy = false;
+    let lastApiSuccessAt = 0;
+    let isUserDraggingSlider = false;
+
+    const canvas = document.getElementById('zone-canvas');
+    const ctx = canvas.getContext('2d');
+    const videoWrapper = document.getElementById('video-wrapper');
+    const feedImg = document.getElementById('stream-feed-img');
+    const placeholder = document.getElementById('video-placeholder');
+    const seekSlider = document.getElementById('seek-slider');
+    const timeCurrent = document.getElementById('time-current');
+    const timeDuration = document.getElementById('time-duration');
+    let videoNativeWidth = 0;
+    let videoNativeHeight = 0;
+    const btnPlayText = document.getElementById('btn-play-text');
+    const btnPlay = document.getElementById('btn-play');
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSampleVideos();
+      startPolling();
+      setupCanvasEvents();
+
+      feedImg.onerror = () => {
+        if (isStreaming) {
+          console.warn("Feed image error, reconnecting...");
+          setTimeout(refreshFeedImage, 1000);
+        }
+      };
+    });
+
+    function formatTime(sec) {
+      if (isNaN(sec) || sec < 0) return "00:00";
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('video-toast');
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 2500);
+    }
+
+    function setApiHealth(ok, label = '') {
+      const dot = document.getElementById('api-health-dot');
+      const text = document.getElementById('api-health-text');
+      if (ok) {
+        lastApiSuccessAt = Date.now();
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        text.className = 'text-[11px] font-medium text-emerald-300';
+        text.textContent = label || 'API ONLINE';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-red-400 critical-pulse';
+        text.className = 'text-[11px] font-medium text-red-300';
+        text.textContent = label || 'API OFFLINE';
+      }
+    }
+
+    async function refreshDashboard() {
+      if (pollBusy) return;
+      pollBusy = true;
+      try {
+        await Promise.all([fetchStatus(), fetchEvents(), fetchStats()]);
+      } finally {
+        pollBusy = false;
+      }
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      refreshDashboard();
+      pollInterval = setInterval(refreshDashboard, 1200);
+    }
+
+    async function loadSampleVideos() {
+      try {
+        const res = await fetch('/api/samples');
+        const samples = await res.json();
+        const selector = document.getElementById('sample-selector');
+
+        // Group by category
+        const groups = {};
+        samples.forEach(s => {
+          if (!groups[s.category]) groups[s.category] = [];
+          groups[s.category].push(s);
+        });
+
+        for (const [cat, items] of Object.entries(groups)) {
+          const optgroup = document.createElement('optgroup');
+          optgroup.label = cat;
+          items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.path;
+            opt.textContent = item.name;
+            optgroup.appendChild(opt);
+          });
+          selector.appendChild(optgroup);
+        }
+      } catch (e) {
+        console.error("Failed to load sample videos", e);
+      }
+    }
+
+    async function fetchStatus() {
+      const featureRevision = toggleFeatureState.revision || 0;
+      const cameraRevision = window.cameraRevision || 0;
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        setApiHealth(true);
+
+        isStreaming = data.is_running;
+        analyzedSource = data.current_source || '';
+        isPaused = data.is_paused;
+        if (window.updateFaceStatus) window.updateFaceStatus(data.face, data.people || []);
+        if (window.updateProductStatus && cameraRevision === (window.cameraRevision || 0)) window.updateProductStatus(data);
+        for (const feature of ['fall', 'wandering', 'violence', 'location']) {
+          const toggle = document.getElementById('toggle-' + feature);
+          if (toggle && !toggle.disabled && featureRevision === (toggleFeatureState.revision || 0)) {
+            toggle.checked = (data.enabled_features || []).includes(feature);
+          }
+        }
+
+        document.getElementById('device-label').textContent = data.device.toUpperCase();
+        document.getElementById('fps-label').textContent = `${data.fps.toFixed(1)} FPS`;
+        document.getElementById('tracks-label').textContent = `${data.active_tracks_count} คน`;
+        document.getElementById('weights-badge').textContent = data.weights_file;
+        document.getElementById('runtime-badge').textContent = data.product_revision==='qa-fall-lstm-main-20261007-fall54fix1'?`เว็บหลัก Fall 54 + LSTM • ${data.runtime==='docker'?'Docker':'Native'} • ${data.product_revision}`:'เซิร์ฟเวอร์เก่า • ต้องเริ่มระบบใหม่';
+        if (data.video_width && data.video_width > 0) videoNativeWidth = data.video_width;
+        if (data.video_height && data.video_height > 0) videoNativeHeight = data.video_height;
+
+        const dot = document.getElementById('stream-dot');
+        const statusText = document.getElementById('stream-status');
+
+        if (data.is_running) {
+          dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 live-dot";
+          statusText.textContent = data.is_paused ? "PAUSED" : "LIVE MONITORING";
+          statusText.className = "text-xs font-semibold text-emerald-400";
+          if (data.frame_ready === false) {
+            feedImg.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+            document.getElementById('stream-placeholder-message').textContent = 'กำลังเปิดแหล่งภาพ กรุณารอสักครู่...';
+            statusText.textContent = 'CONNECTING';
+          } else {
+            feedImg.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+          }
+          btnPlay.innerHTML = data.is_paused ? '<i class="fa-solid fa-play"></i> <span>เล่นต่อ</span>' : '<i class="fa-solid fa-pause"></i> <span>พัก</span>';
+
+          if (!feedImg.src || feedImg.src.indexOf('/api/stream/feed') === -1) {
+            refreshFeedImage();
+          }
+
+          // Update timeline / scrubber if not currently dragging
+          if (!data.is_live && data.duration_sec > 0) {
+            seekSlider.disabled = false;
+            seekSlider.classList.remove('control-disabled');
+            timeCurrent.textContent = formatTime(data.current_sec);
+            timeDuration.textContent = formatTime(data.duration_sec);
+            if (!isUserDraggingSlider) {
+              const pct = (data.current_sec / data.duration_sec) * 100;
+              seekSlider.value = pct;
+            }
+          } else {
+            seekSlider.disabled = true;
+            seekSlider.classList.add('control-disabled');
+            timeCurrent.textContent = "LIVE";
+            timeDuration.textContent = "LIVE";
+            seekSlider.value = 100;
+          }
+        } else {
+          dot.className = "w-2.5 h-2.5 rounded-full bg-slate-500";
+          statusText.textContent = "IDLE";
+          statusText.className = "text-xs font-medium text-slate-400";
+          feedImg.classList.add('hidden');
+          placeholder.classList.remove('hidden');
+          document.getElementById('stream-placeholder-message').textContent = data.last_error || 'เลือกกล้องหรือคลิปเพื่อเริ่มใช้งาน';
+          btnPlay.innerHTML = '<i class="fa-solid fa-play"></i> <span>เริ่มประมวลผล</span>';
+        }
+        if (data.last_error) {
+          statusText.textContent = 'ERROR';
+          statusText.className = 'text-xs font-semibold text-red-400';
+          if (fetchStatus.lastError !== data.last_error) showToast(data.last_error);
+        }
+        fetchStatus.lastError = data.last_error || null;
+        const cameraWarning = document.getElementById('camera-warning');
+        cameraWarning.textContent = data.camera_warning || '';
+        if (data.camera_warning) cameraWarning.classList.remove('hidden');
+        else cameraWarning.classList.add('hidden');
+        if (window.syncReview) window.syncReview(data);
+      } catch (e) {
+        setApiHealth(false);
+        console.error("Error fetching status", e);
+      }
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const stats = await res.json();
+        document.getElementById('stat-total').textContent = stats.total || 0;
+        document.getElementById('stat-pending').textContent = stats.needs_review || 0;
+        document.getElementById('stat-confirmed').textContent = stats.confirmed || 0;
+        document.getElementById('stat-false').textContent = stats.false_alarm || 0;
+      } catch (e) {
+        console.error("Error fetching stats", e);
+      }
+    }
+
+    async function fetchEvents() {
+      try {
+        const includeLast=!!document.getElementById('show-last-seen')?.checked;
+        const res = await fetch('/api/events?limit=500&category=all&include_last_seen='+includeLast, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const events = await res.json();
+        lastEvents = Array.isArray(events) ? events : [];
+        updatePriorityAlert(window.eventCategoryVisible?lastEvents.filter(window.eventCategoryVisible):lastEvents);
+        renderEvents(lastEvents);
+      } catch (e) {
+        console.error("Error fetching events", e);
+      }
+    }
+
+    function updatePriorityAlert(events) {
+      const banner = document.getElementById('priority-alert-banner');
+      const text = document.getElementById('priority-alert-text');
+      const replay = document.getElementById('priority-playback-button');
+      const critical = events.find(e =>
+        (!window.activeCameraId || e.source_id === window.activeCameraId) &&
+        e.review_status === 'needs_review' &&
+        (e.severity === 'critical' || e.severity === 'high' ||
+         String(e.event_type || '').includes('fall'))
+      );
+      if (!critical) {
+        replay.disabled=true;replay.onclick=null;
+        banner.classList.add('hidden');
+        return;
+      }
+      const type = critical.event_type === 'fall_posture_review' ? 'ท่าทางเสี่ยง — ยังยืนยันจังหวะล้มไม่ได้' : String(critical.event_type || '').includes('fall')
+          ? 'ตรวจพบความเสี่ยงการหกล้ม'
+          : (critical.message || critical.event_type || 'เหตุการณ์สำคัญ');
+      const tracks = (critical.track_ids || []).length ? ' • Track #' + critical.track_ids.join(', #') : '';
+      text.textContent = (window.activeCameraName ? window.activeCameraName+' • ' : '') + type + tracks + ' — กรุณาตรวจสอบ';
+      banner.classList.remove('hidden');
+      replay.disabled=false;replay.onclick=()=>playEvent(critical.event_id);
+    }
+
+    function renderEvents(events) {
+      const container = document.getElementById('events-container');
+      const filtered = events.filter(e => {
+        if (window.eventCategoryVisible && !window.eventCategoryVisible(e)) return false;
+        if (eventFilter === 'pending' && e.review_status !== 'needs_review') return false;
+        if (eventFilter === 'critical' && !(
+          e.severity === 'critical' || e.severity === 'high' ||
+           String(e.event_type || '').includes('fall')
+        )) return false;
+        if (eventSearch) {
+          const haystack = [
+            e.event_type, e.message, e.severity,
+            (e.track_ids || []).join(' ')
+          ].join(' ').toLowerCase();
+          if (!haystack.includes(eventSearch)) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('event-display-count').textContent=`แสดง ${filtered.length}/${events.length} เหตุการณ์ที่โหลด • รอตรวจ ${filtered.filter(e=>e.review_status==='needs_review').length}`;
+      document.getElementById('unread-badge').textContent=filtered.filter(e=>e.review_status==='needs_review').length;
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-500 text-xs">
+            <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+            ไม่มีเหตุการณ์ที่ตรงกับเงื่อนไข
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(e => {
+        const isCritical = e.severity === 'critical' || e.severity === 'high' || (e.event_type.includes('fall') && e.event_type !== 'fall_posture_review');
+        const isWarning = e.severity === 'warning' || e.severity === 'medium';
+
+        let typeIcon = 'fa-solid fa-circle-info text-blue-400';
+        let typeName = e.event_type;
+        if (e.event_type === 'fall_posture_review') {
+          typeIcon = 'fa-solid fa-person-falling text-amber-400';
+          typeName = 'ท่าทางเสี่ยง — ยังยืนยันจังหวะล้มไม่ได้';
+        } else if (e.event_type.includes('fall')) {
+          typeIcon = 'fa-solid fa-person-falling text-red-400';
+          typeName = e.metadata?.backend==='yolo_pose_rf_v2'?'V2 • ท่าล้มที่ควรตรวจสอบ':'⚠️ อาจเกิดการล้ม — รอตรวจสอบ (Fall)';
+        } else if (e.event_type.includes('wandering')) {
+          typeIcon = 'fa-solid fa-person-walking-dashed-line-arrow-right text-amber-400';
+          typeName = 'พลัดหลง / ข้ามเขต';
+        } else if (e.event_type.includes('violence') || e.event_type === 'high_risk_interaction') {
+          typeIcon = 'fa-solid fa-hand-fist text-orange-400';
+          typeName = e.event_type==='violence_detected'?'LSTM • ภาพเสี่ยงทำร้าย':'ความเสี่ยงการปะทะ';
+        } else if (e.event_type.includes('location') || e.event_type === 'last_seen_update' || e.event_type === 'identity_update') {
+          typeIcon = 'fa-solid fa-map-location-dot text-blue-400';
+          typeName = 'อัปเดตตำแหน่ง';
+        }
+
+        const borderClass = isCritical ? 'border-red-500/50 bg-red-950/25' : (isWarning ? 'border-amber-500/30 bg-amber-950/15' : 'border-slate-800 bg-slate-850');
+        const badgeClass = isCritical ? 'bg-red-500/20 text-red-300 border border-red-500/40' : (isWarning ? 'bg-amber-500/20 text-amber-300' : 'bg-blue-500/20 text-blue-300');
+
+        let reviewUI = '';
+        if (e.review_status === 'needs_review') {
+          reviewUI = `
+            <div class="flex items-center space-x-2 mt-2 pt-2 border-t border-slate-800/80">
+              <button onclick="reviewEvent('${e.event_id}', 'confirmed')" class="flex-1 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1">
+                <i class="fa-solid fa-check"></i> ยืนยันจริง
+              </button>
+              <button onclick="reviewEvent('${e.event_id}', 'false_alarm')" class="flex-1 py-1 rounded bg-red-600/20 hover:bg-red-600/40 text-red-300 border border-red-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1">
+                <i class="fa-solid fa-xmark"></i> เตือนผิด (FP)
+              </button>
+            </div>`;
+        } else {
+          const statusText = e.review_status === 'confirmed' ? '✅ ยืนยันแล้ว (จริง)' : '❌ บันทึกเป็นแจ้งเตือนผิดพลาด';
+          const colorText = e.review_status === 'confirmed' ? 'text-emerald-400' : 'text-red-400';
+          reviewUI = `<p class="mt-2 text-[10px] ${colorText} font-medium">สถานะ: ${statusText}</p>`;
+        }
+
+        return `
+          <div class="border ${borderClass} rounded-xl p-3 text-xs transition hover:border-slate-700">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center space-x-2">
+                <i class="${typeIcon} text-sm"></i>
+                <span class="font-bold text-slate-200">${escapeHtml(typeName)}</span>
+              </div>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full ${badgeClass}">${escapeHtml({critical:'วิกฤต',high:'สูง',medium:'ปานกลาง',warning:'ควรตรวจสอบ',low:'ทั่วไป',info:'ข้อมูล'}[e.severity] || 'ข้อมูล')}</span>
+            </div>
+
+            <p class="text-slate-300 text-[11px] mt-1.5">${escapeHtml(e.message || 'ไม่มีข้อความเพิ่มเติม')}</p>
+            <p class="text-slate-400 text-[10px] mt-1">ห้อง/กล้อง: ${escapeHtml(e.source_id || 'ไม่ระบุ')}</p>
+            ${(e.metadata?.people || []).length ? `<p class="text-brand-300 text-[11px] mt-1">บุคคล: ${escapeHtml(e.metadata.people.map(person => person.display_name).join(', '))}</p>` : ''}
+
+            <div class="flex items-center justify-between text-[10px] text-slate-400 mt-2 font-mono">
+              <span>${e.metadata?.person_attribution===false?'ผลทั้งภาพ • ไม่ระบุบุคคล':'Track ID: #'+(e.track_ids || []).join(', ')}</span>
+              <span>${e.metadata?.confidence_kind==='model_score'?'คะแนนโมเดล':'ความมั่นใจ'}: ${((e.confidence || 0) * 100).toFixed(1)}%</span>
+            </div>
+
+            <button data-event-id="${escapeHtml(e.event_id)}" onclick="playEvent(this.dataset.eventId)" class="mt-2 px-3 py-1 rounded bg-cyan-800 text-cyan-100">ย้อนดูช่วงแจ้งเตือน</button>
+            ${reviewUI}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    }
+
+    async function reviewEvent(eventId, verdict) {
+      try {
+        const res = await fetch(`/api/events/${eventId}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ verdict: verdict })
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'บันทึกผลไม่สำเร็จ');
+        fetchEvents();
+        fetchStats();
+      } catch (e) {
+        alert("บันทึกผลการตรวจสอบไม่สำเร็จ: " + e);
+      }
+    }
+
+    function setEventFilter(filter) {
+      eventFilter = filter;
+      const active = 'px-2 py-0.5 rounded bg-brand-500/20 text-brand-400 font-semibold text-[11px]';
+      const idle = 'px-2 py-0.5 rounded hover:bg-slate-800 text-slate-400 text-[11px]';
+      document.getElementById('filter-all').className = filter === 'all' ? active : idle;
+      document.getElementById('filter-pending').className = filter === 'pending' ? active : idle;
+      document.getElementById('filter-critical').className = filter === 'critical' ? active : idle;
+      renderEvents(lastEvents);
+    }
+
+    function refreshFeedImage() {
+      feedImg.src = '/api/stream/feed?t=' + Date.now();
+    }
+
+    function onSelectSample(val) {
+      if (!val) return;
+      currentSource = val;
+      const selector = document.getElementById('sample-selector');
+      document.getElementById('active-source-title').textContent = selector.options[selector.selectedIndex].text;
+      startStreamWithSource(val);
+    }
+
+    async function handleFileUpload(files) {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      document.getElementById('active-source-title').textContent = `กำลังอัปโหลด: ${file.name}...`;
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('อัปโหลดไม่สำเร็จ');
+        const data = await res.json();
+        currentSource = data.path;
+        document.getElementById('active-source-title').textContent = `ไฟล์: ${file.name}`;
+        startStreamWithSource(data.path);
+      } catch (e) {
+        alert("อัปโหลดไฟล์ล้มเหลว: " + e);
+      }
+    }
+
+    function togglePlay() {
+      if (isStreaming) {
+        pauseStream();
+        return;
+      }
+      if (!currentSource) {
+        const selector = document.getElementById('sample-selector');
+        if (selector.options.length > 1) {
+          selector.selectedIndex = 1;
+          onSelectSample(selector.value);
+          return;
+        }
+      }
+      startStreamWithSource(currentSource);
+    }
+
+    async function startStreamWithSource(src) {
+      if (!src) return false;
+      try {
+        feedImg.src = '';
+        feedImg.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+
+        const res = await fetch('/api/stream/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: src, loop: false, device: document.getElementById('inference-device')?.value || 'cpu',
+            model:document.getElementById('pose-model')?.value || 'yolo26n-pose.pt',
+            decode_device:document.getElementById('decode-device')?.value || 'cpu',
+            review_mode:!/^\d+$/.test(src) && !/^(rtsp|https?):/.test(src),camera_id: window.activeCameraId || null })
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'เริ่มประมวลผลไม่สำเร็จ');
+
+        setTimeout(refreshFeedImage, 300);
+        fetchStatus();
+        return true;
+      } catch (e) {
+        alert("ไม่สามารถเริ่มการประมวลผลได้: " + e);
+        return false;
+      }
+    }
+
+    async function pauseStream() {
+      try {
+        await fetch('/api/stream/pause', { method: 'POST' });
+        fetchStatus();
+      } catch (e) {}
+    }
+
+    async function stopStream() {
+      try {
+        const res = await fetch('/api/stream/stop', { method: 'POST' });
+        if (!res.ok) throw new Error((await res.json()).detail || 'หยุดไม่สำเร็จ');
+        feedImg.src = '';
+        feedImg.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        fetchStatus();
+      } catch (e) {}
+    }
+
+    // SEEK / SCRUBBING LOGIC (กรอคลิป)
+    function onSeekSliderInput(val) {
+      isUserDraggingSlider = true;
+    }
+
+    async function onSeekSliderChange(val) {
+      isUserDraggingSlider = false;
+      const ratio = parseFloat(val) / 100.0;
+      try {
+        const res = await fetch('/api/stream/seek', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ratio: ratio })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          showToast(`⏩ กรอไปยัง ${formatTime(data.target_sec)}`);
+          fetchStatus();
+        }
+      } catch (e) {
+        console.error("Seek failed", e);
+      }
+    }
+
+    async function seekDelta(seconds) {
+      try {
+        const res = await fetch('/api/stream/seek', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ delta_sec: seconds })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          const sign = seconds > 0 ? `+${seconds}s` : `${seconds}s`;
+          showToast(`⏩ ข้าม ${sign} (${formatTime(data.target_sec)})`);
+          fetchStatus();
+        }
+      } catch (e) {
+        console.error("Seek delta failed", e);
+      }
+    }
+
+    async function setSpeed(speed) {
+      try {
+        await fetch('/api/stream/speed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ speed: speed })
+        });
+        ['speed-05', 'speed-10', 'speed-20'].forEach(id => {
+          document.getElementById(id).className = "px-2 py-0.5 rounded text-[11px] text-slate-400 hover:text-white";
+        });
+        const activeId = speed === 0.5 ? 'speed-05' : (speed === 2.0 ? 'speed-20' : 'speed-10');
+        document.getElementById(activeId).className = "px-2 py-0.5 rounded text-[11px] bg-brand-500 text-white font-semibold";
+        showToast(`⚡ ปรับความเร็วเป็น ${speed}x`);
+      } catch (e) {}
+    }
+
+    // ZONE DRAWING LOGIC (Pixel-Perfect Alignment)
+    function getVideoRenderRect() {
+      const cw = canvas.width;
+      const ch = canvas.height;
+
+      // Use actual video native dimensions or fallback
+      const vw = (feedImg && feedImg.naturalWidth > 0) ? feedImg.naturalWidth : (videoNativeWidth > 0 ? videoNativeWidth : 16);
+      const vh = (feedImg && feedImg.naturalHeight > 0) ? feedImg.naturalHeight : (videoNativeHeight > 0 ? videoNativeHeight : 9);
+
+      const containerRatio = cw / ch;
+      const videoRatio = vw / vh;
+
+      let rw, rh, rx, ry;
+      if (videoRatio > containerRatio) {
+        // Video is wider than container: black bars on top and bottom
+        rw = cw;
+        rh = cw / videoRatio;
+        rx = 0;
+        ry = (ch - rh) / 2;
+      } else {
+        // Video is taller than container: black bars on left and right
+        rh = ch;
+        rw = ch * videoRatio;
+        rx = (cw - rw) / 2;
+        ry = 0;
+      }
+      return { x: rx, y: ry, w: rw, h: rh, vw: vw, vh: vh };
+    }
+
+    function setupCanvasEvents() {
+      function resizeCanvas() {
+        canvas.width = videoWrapper.clientWidth;
+        canvas.height = videoWrapper.clientHeight;
+        redrawCanvas();
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      canvas.addEventListener('click', (e) => {
+        if (!drawingMode) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        const vRect = getVideoRenderRect();
+        // Check if click is inside the actual video display area
+        if (clickX >= vRect.x && clickX <= vRect.x + vRect.w &&
+            clickY >= vRect.y && clickY <= vRect.y + vRect.h) {
+          // Normalized coordinates strictly relative to video [0.0, 1.0]
+          const normX = (clickX - vRect.x) / vRect.w;
+          const normY = (clickY - vRect.y) / vRect.h;
+          drawnPoints.push([normX, normY]);
+          redrawCanvas();
+        } else {
+          showToast("⚠️ กรุณาคลิกภายในขอบเขตภาพวิดีโอ");
+        }
+      });
+    }
+
+    function toggleZoneDrawing(mode) {
+      if (drawingMode === mode) {
+        cancelZoneDrawing();
+        return;
+      }
+      drawingMode = mode;
+      drawingSource = analyzedSource;
+      window.drawingCameraId = window.activeCameraId;
+      document.getElementById('zone-name-input').value = mode === 'wandering' ? 'ประตู A' : 'เตียง A';
+      drawnPoints = [];
+      canvas.classList.remove('pointer-events-none');
+      document.getElementById('drawing-banner').classList.remove('hidden');
+      document.getElementById('drawing-instructions').textContent =
+        mode === 'wandering' ? 'คลิกวาดขอบเขตพื้นที่ห้ามเข้า/พลัดหลง (อย่างน้อย 3 จุด)' : 'คลิกวาดกรอบเตียงนอนของผู้สูงอายุ (อย่างน้อย 3 จุด)';
+      redrawCanvas();
+    }
+
+    function cancelZoneDrawing() {
+      drawingMode = null;
+      drawnPoints = [];
+      canvas.classList.add('pointer-events-none');
+      document.getElementById('drawing-banner').classList.add('hidden');
+      redrawCanvas();
+    }
+
+    function clearCurrentDrawing() {
+      drawnPoints = [];
+      redrawCanvas();
+      showToast("🧹 ล้างจุดที่กำลังวาดแล้ว");
+    }
+
+    async function clearZones() {
+      if (drawingMode && drawnPoints.length > 0) {
+        clearCurrentDrawing();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/config/zones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            camera_id: window.activeCameraId,
+            wandering_zones: {},
+            location_zones: {}
+          })
+        });
+        const data = await res.json();
+        drawnPoints = [];
+        if (!res.ok) throw new Error(data.detail || 'ล้างโซนไม่สำเร็จ');
+        redrawCanvas();
+        if (drawingMode) cancelZoneDrawing();
+        showToast("🗑️ ล้างโซนทั้งหมดบนวิดีโอเรียบร้อยแล้ว");
+      } catch (e) {
+        console.error("Clear zones error:", e);
+        showToast("❌ ล้างโซนไม่สำเร็จ: " + e);
+      }
+    }
+
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!drawingMode && drawnPoints.length === 0) return;
+
+      const vRect = getVideoRenderRect();
+
+      // In drawing mode, draw a subtle guideline outline around active video
+      if (drawingMode) {
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(vRect.x, vRect.y, vRect.w, vRect.h);
+        ctx.setLineDash([]);
+      }
+
+      if (drawnPoints.length === 0) return;
+
+      ctx.strokeStyle = drawingMode === 'wandering' ? '#ef4444' : '#06b6d4';
+      ctx.fillStyle = drawingMode === 'wandering' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(6, 182, 212, 0.3)';
+      ctx.lineWidth = 2.5;
+
+      ctx.beginPath();
+      drawnPoints.forEach((pt, i) => {
+        const px = vRect.x + pt[0] * vRect.w;
+        const py = vRect.y + pt[1] * vRect.h;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+
+      if (drawnPoints.length >= 3) {
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.stroke();
+
+      // Draw point dots with numbers
+      drawnPoints.forEach((pt, i) => {
+        const px = vRect.x + pt[0] * vRect.w;
+        const py = vRect.y + pt[1] * vRect.h;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#06b6d4';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(i + 1, px + 8, py - 4);
+      });
+    }
+
+    async function saveDrawnZone() {
+      if (drawnPoints.length < 3) {
+        showToast('กรุณาคลิกวาดจุดอย่างน้อย 3 จุด');
+        return;
+      }
+
+      const zoneName = document.getElementById('zone-name-input').value.trim();
+      if (!zoneName) { showToast('กรุณาตั้งชื่อเตียง/เขต'); return; }
+      if (window.drawingCameraId !== window.activeCameraId) { showToast('ห้องเปลี่ยนแล้ว กรุณาวาดใหม่'); return; }
+      const payload = {camera_id: window.activeCameraId};
+      let existing;
+      try {
+        const response = await fetch('/api/config');
+        if (!response.ok) throw new Error('อ่านโซนเดิมไม่สำเร็จ');
+        existing = await response.json();
+      } catch (error) { showToast('บันทึกโซนไม่สำเร็จ: '+error.message); return; }
+      if (window.drawingCameraId !== window.activeCameraId) { showToast('ห้องเปลี่ยนแล้ว กรุณาวาดใหม่'); return; }
+
+      const normalizedPoints = drawnPoints.map(p => [
+        Math.max(0, Math.min(1, Number(p[0].toFixed(4)))),
+        Math.max(0, Math.min(1, Number(p[1].toFixed(4))))
+      ]);
+
+      if (drawingMode === 'wandering') {
+        payload.wandering_zones = {
+          ...(existing.features.wandering.zones_relative || {}),
+          [zoneName]: normalizedPoints
+        };
+      } else {
+        payload.location_zones = {
+          ...(existing.features.location.config.zones || {}),
+          [zoneName]: {
+            type: "bed",
+            points: normalizedPoints,
+            source_ids: [window.activeCameraId],
+            room_id: window.activeCameraName,
+            bed_id: zoneName
+          }
+        };
+      }
+
+      const saveBtn = document.getElementById('btn-save-zone');
+      const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> บันทึก...';
+      }
+
+      try {
+        const res = await fetch('/api/config/zones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'บันทึกไม่สำเร็จ');
+        if (data.status === 'zones_updated') {
+          showToast(`✅ บันทึกโซน ${drawingMode === 'wandering' ? 'เขตพลัดหลง' : 'เตียง'} เรียบร้อยแล้ว`);
+          cancelZoneDrawing();
+        } else {
+          showToast(`⚠️ เกิดข้อผิดพลาดในการบันทึก`);
+        }
+      } catch (e) {
+        console.error("Save zone error:", e);
+        showToast("❌ บันทึกโซนล้มเหลว: " + e);
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalHtml;
+        }
+      }
+    }
+
+    async function toggleFeatureState(featureName, isChecked) {
+      toggleFeatureState.revision = (toggleFeatureState.revision || 0) + 1;
+      const toggle = document.getElementById('toggle-' + featureName);
+      toggle.disabled = true;
+      try {
+        const response = await fetch('/api/config/features', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [featureName]: isChecked })
+        });
+        if (!response.ok) throw new Error((await response.json()).detail || 'เปลี่ยนการตั้งค่าไม่สำเร็จ');
+        const result = await response.json();
+        if (!Array.isArray(result.enabled_features) || result.enabled_features.includes(featureName) !== isChecked) {
+          throw new Error('เซิร์ฟเวอร์ยังไม่เปลี่ยนสถานะฟีเจอร์ กรุณารีสตาร์ตเซิร์ฟเวอร์เป็นรุ่นล่าสุด');
+        }
+        toggle.checked = result.enabled_features.includes(featureName);
+        showToast(`ตั้งค่าฟีเจอร์ ${featureName}: ${isChecked ? 'เปิด' : 'ปิด'}`);
+      } catch (e) {
+        toggle.checked = !isChecked;
+        showToast(String(e.message));
+        console.error("Error toggling feature", e);
+      } finally {
+        toggle.disabled = false;
+        toggleFeatureState.revision = (toggleFeatureState.revision || 0) + 1;
+        await fetchStatus();
+      }
+    }
+
+    function toggleSettingsModal() {
+      const modal = document.getElementById('settings-modal');
+      modal.classList.toggle('hidden');
+    }
+  </script>
+
+  <script src="/static/face.js?v=qa-player-models-reopen-20261003"></script>
+  <script src="/static/product.js?v=qa-cctv-evidence-20261004"></script>
+  <script src="/static/violence.js?v=qa-fall-lstm-main-20261007-fall54fix1"></script>
+  <script src="/static/display.js?v=qa-display-20261004"></script>
+    <script src="/static/review.js?v=qa-event-evidence-first-pass2-20261004"></script>
+  <script src="/static/multiview.js?v=qa-player-models-reopen-20261003"></script>
+</body>
+</html>

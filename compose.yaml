@@ -1,0 +1,41 @@
+services:
+  nexora:
+    image: ${NEXORA_IMAGE:-nexora-server:cpu-v0.1.0-rc.1}
+    platform: linux/amd64
+    build:
+      context: .
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+        WEB_REVISION: ${NEXORA_WEB_REVISION:-qa-fall-lstm-main-20261007-fall54fix1}
+        NEXORA_VERSION: v0.1.0-rc.1
+    ports:
+      - "127.0.0.1:${NEXORA_PORT:-8002}:8080"
+    volumes:
+      - type: bind
+        source: ./models
+        target: /app/models
+        read_only: true
+        bind:
+          create_host_path: false
+      - nexora_data:/app/local_only
+      - type: bind
+        source: ./best_lstm_model.pth
+        target: /app/best_lstm_model.pth
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./Fall/models_yolo
+        target: /app/Fall/models_yolo
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./videos:/incoming_cctv:ro
+    environment:
+      NEXORA_DEVICE: cpu
+      NEXORA_FFMPEG: /usr/bin/ffmpeg
+    init: true
+    restart: unless-stopped
+    shm_size: 256mb
+volumes:
+  nexora_data:

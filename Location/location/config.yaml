@@ -1,0 +1,129 @@
+# ============================================================================
+# Location Feature — config
+# พิกัดทั้งหมดเป็น pixel ของเฟรม (ตัวอย่างนี้สำหรับวิดีโอ 1920x1080)
+# ใช้ `python demo.py --input clip.mp4 --pick-zone <zone_id>` เพื่อคลิกหาพิกัดจริง
+# ============================================================================
+
+location:
+  site_id: eldercare_01
+  floor_id: floor_02
+  point_mode: bottom_center        # bottom_center | center | top_center
+  switch_confirmation_frames: 5    # ตำแหน่งใหม่ต้องคงที่ติดกันกี่เฟรม
+  minimum_dwell_sec: 0.2           # และต้องอยู่อย่างน้อยกี่วินาที
+  boundary_tolerance_px: 15        # หลุดขอบ zone เดิมไม่เกินนี้ = ยังอยู่ที่เดิม
+  lost_track_timeout_sec: 2.0      # หายเกินนี้ → lost + ส่ง last_seen_update
+  last_seen_retention_sec: 3600    # เก็บ last-seen ไว้นานเท่าไร
+  emit_on_first_seen: true         # ส่ง location_update ตอนเห็น track ครั้งแรก
+  dedupe_containment: 0.85         # กรอบที่ถูกกรอบใหญ่ครอบ >= 85% = กรอบซ้อนของคนเดิม → ตัดทิ้ง (0 = ปิด)
+  min_box_height_px: 0             # ตัดกรอบที่เตี้ยกว่านี้ (0 = ปิด)
+  reid:                            # track หาย แล้วโผล่มาด้วย track_id ใหม่ใกล้ที่เดิม → คนเดิม
+    enabled: true
+    window_sec: 3.0
+    max_distance_px: 120
+
+# กล้อง 1 ตัว = 1 ห้อง → map ตรงได้ (ใช้เมื่อจุดไม่ตกใน polygon ชนิด room ใด)
+sources:
+  cam_room_203_01:
+    room_id: room_203
+    floor_id: floor_02
+  cam_hallway_02:
+    floor_id: floor_02
+
+# ห้าม hard-code polygon ใน Python — แก้ที่นี่เท่านั้น
+# type: room | bed | bedside | hallway | dining | bathroom_entrance | garden |
+#       nurse_station | exit_corridor | restricted_area | safe_zone | transition_zone
+zones:
+  room_203:
+    type: room
+    source_ids: [cam_room_203_01]
+    points: [[100, 100], [1500, 100], [1500, 1000], [100, 1000]]
+
+  bed_area_203_A:
+    type: bed
+    room_id: room_203
+    bed_id: bed_A
+    source_ids: [cam_room_203_01]
+    points: [[150, 250], [650, 250], [650, 750], [150, 750]]
+
+  bed_area_203_B:
+    type: bed
+    room_id: room_203
+    bed_id: bed_B
+    source_ids: [cam_room_203_01]
+    points: [[750, 250], [1250, 250], [1250, 750], [750, 750]]
+
+  bedside_203_B:
+    type: bedside
+    room_id: room_203
+    source_ids: [cam_room_203_01]
+    points: [[750, 750], [1250, 750], [1250, 900], [750, 900]]
+
+  hallway:
+    type: hallway
+    source_ids: [cam_room_203_01]
+    points: [[1500, 100], [1900, 100], [1900, 1000], [1500, 1000]]
+
+  exit_corridor:
+    type: exit_corridor
+    source_ids: [cam_hallway_02]
+    points: [[0, 600], [1920, 600], [1920, 1080], [0, 1080]]
+
+# ข้อมูลผู้พัก (ตัวอย่างสมมติ — ห้ามใส่ข้อมูลผู้สูงอายุจริงลง repo)
+residents:
+  resident_001:
+    display_name: Resident 001
+    assigned_room: room_203
+    assigned_bed: bed_B
+  resident_002:
+    display_name: Resident 002
+    assigned_room: room_203
+    assigned_bed: bed_A
+
+# ผู้ดูแล / พยาบาล / พนักงาน (ตัวอย่างสมมติ) — ใช้แยก "ผู้สูงอายุ" กับ "ผู้ดูแล" ใน event (person_role)
+# ตัวตนมาจาก RFID/BLE/wristband ของพนักงาน, assign_identity(..., role=...) หรือ face (ถ้าเปิดและยินยอม)
+staff:
+  staff_001:
+    display_name: Caregiver 001
+    role: caregiver
+  staff_002:
+    display_name: Nurse 002
+    role: caregiver
+
+identity:
+  enabled: true                    # false = track_only ล้วน (ไม่ดูแหล่งตัวตนใดเลย)
+  default_mode: track_only
+
+identity_priority:                 # แหล่งบนสุดชนะ (ปรับได้)
+  - wristband
+  - rfid
+  - ble
+  - manual
+  - external_service
+  - face_recognition
+  - track_only
+
+face_detection:
+  enabled: false                   # เปิดเพื่อแสดงกรอบหน้า/คุณภาพ (ยังไม่ระบุตัวตน)
+  backend: yolo_face               # yolo_face | yunet
+  model_path: yolov8n-face.pt      # yunet → face_detection_yunet_2023mar.onnx
+  conf: 0.25                       # ค่าจาก threshold analysis ของ F4 (Precision 91.38%)
+  minimum_face_size: 40
+  quality_threshold: 0.5
+  every_n_frames: 3                # ตรวจหน้าทุก N เฟรมต่อ track (ประหยัดเวลา)
+
+face_recognition:
+  enabled: false                   # ต้องเปิดคู่กับ privacy.face_recognition_enabled
+  embedder: sface
+  embedder_model_path: face_recognition_sface_2021dec.onnx
+  database_path: face_db.npz       # ห้าม commit ขึ้น GitHub
+  similarity_threshold: 0.70       # ต่ำกว่านี้ = unknown (ไม่ force match)
+  ambiguity_margin: 0.03           # อันดับ 1 กับ 2 ใกล้กันเกิน = unknown
+  confirmation_matches: 3          # ต้องตรงกัน 3 ...
+  confirmation_window: 5           # ... จาก 5 ครั้งล่าสุด
+  # switch_matches: 4              # เปลี่ยนจากคนที่ยืนยันแล้ว ต้องได้กี่ครั้ง (default = confirmation+1)
+
+privacy:
+  face_recognition_enabled: false  # สวิตช์ชั้นที่ 2 — ต้อง true ด้วยถึงจะเปิด recognition ได้
+  store_raw_face_images: false     # ระบบนี้ไม่เคยบันทึกภาพหน้า
+  store_face_embeddings: true
+  mask_face_in_saved_evidence: false   # demo.py --save จะเบลอหน้าถ้าเป็น true

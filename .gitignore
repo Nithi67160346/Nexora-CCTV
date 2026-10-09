@@ -1,0 +1,54 @@
+# ================================================================
+# Noxera — สิ่งที่ห้ามขึ้น GitHub (ทั้ง repo)
+# ================================================================
+
+# ของส่วนตัวแต่ละคน: dataset, วิดีโอ, โมเดล, งานเก่า
+local_only/
+videos/
+dist/
+PRESENTATION_SCRIPT_TH.md
+TECH_TEAM_REVIEW_TH.md
+
+# วิดีโอ / โมเดล / ข้อมูลใบหน้า (license + PDPA)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.pt
+*.onnx
+*.pth
+*.pkl
+*.joblib
+*.npz
+face_db*
+
+# ไฟล์ชั่วคราว
+__pycache__/
+.pytest_cache/
+*.jsonl
+.env
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Local feature integration output / research source provenance
+app/features/seizure/metrics/research_plan.json
+app/features/seizure/metrics/bounded_rgb_probe.json
+Ultralytics/
+Fall/models_yolo/
+
+# Development environments, local backups, and private research provenance
+.venv/
+.env.*
+!.env.example
+*.zip
+docker_images/
+*.tar
+*.tar.gz
+*.sha256
+run_web.backup-encoding.ps1
+web/static/index.backup-before-ui-upgrade.html
+web/static/_syntax_check.js
+app/features/seizure/metrics/historical_rgb/research_plan.json
+app/features/seizure/metrics/historical_rgb/bounded_rgb_probe.json

@@ -1,0 +1,20 @@
+# Local progress demonstration, not deployment validation.
+event_capacity: 10000
+features:
+  violence:
+    enabled: true # Existing bbox rule baseline, not inference_v2.py clip LSTM.
+  location:
+    enabled: true
+    config:
+      identity: {enabled: false}
+      zones: {} # Define actual pixel zones/rooms before using room/bed labels.
+  wandering:
+    enabled: true
+    track_timeout_sec: 2
+    zones_relative: {} # Define actual restricted polygons before boundary alerts.
+  fall:
+    enabled: false # Enable from Web settings for QA; experimental geometry rule.
+    upright_baseline_sec: 1.0
+    transition_max_sec: 1.5
+    lying_confirmation_sec: 0.6
+    alert_cooldown_sec: 30

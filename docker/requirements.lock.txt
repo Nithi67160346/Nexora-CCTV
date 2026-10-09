@@ -1,0 +1,17 @@
+# Direct runtime versions match the development environment (Python 3.12).
+numpy==2.5.2
+PyYAML==6.0.3
+opencv-python==4.14.0.94
+ultralytics==8.4.163
+scipy==1.18.1
+lap==0.5.13
+fastapi==0.142.2
+uvicorn==0.54.0
+python-multipart==0.0.32
+Pillow==12.3.0
+imageio-ffmpeg==0.6.0
+httpx==0.28.1
+pandas==3.0.6
+scikit-learn==1.9.1
+joblib==1.4.2
+threadpoolctl==3.5.0

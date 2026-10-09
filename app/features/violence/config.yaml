@@ -1,0 +1,42 @@
+# High-Risk Interaction Detection — config
+# ห้าม hard-code threshold ใน module.py — ทุกค่าที่ปรับได้ต้องมาจากไฟล์นี้
+
+feature:
+  enabled: true
+  # rule_based  = baseline ปัจจุบัน (bbox/track kinematics + weighted rules, ไม่ต้องเทรน)
+  # calibrated  = rule_based เดียวกัน + logistic regression calibration layer (ต้องมี models/calibrator.pkl)
+  # pose_gru    = pose-sequence GRU (ต้องมี models/pose_gru.pt และ context.persons[i].pose ไม่เป็น None)
+  model_type: rule_based
+
+pair:
+  # ระยะห่างสูงสุดระหว่างจุดศูนย์กลางคน 2 คนที่จะนับเป็น "คู่ที่อาจมีปฏิสัมพันธ์"
+  # normalize ด้วยความสูงเฉลี่ยของ bbox ทั้งคู่ (scale-invariant — ไม่ผูกกับความละเอียด/ระยะกล้อง)
+  max_pair_distance_bbox_heights: 1.5
+  # ถ้าคู่หายไปจาก candidate นานเกินนี้ ให้ลบ buffer ของคู่นั้นทิ้ง (วินาที)
+  pair_timeout_sec: 2.0
+
+temporal:
+  window_seconds: 3.0
+  # ต้องมีข้อมูลอย่างน้อยกี่เปอร์เซ็นต์ของ window ถึงจะเริ่มให้คะแนน (กัน cold-start ตอนคู่เพิ่งปรากฏ)
+  min_window_fill_ratio: 0.5
+
+detection:
+  confidence_threshold: 0.70
+  # threshold ของ severity: >= severity_high_threshold -> "high" มิฉะนั้น "medium"
+  severity_high_threshold: 0.85
+
+event:
+  minimum_duration_sec: 0.5
+  cooldown_sec: 10.0
+
+features:
+  # เปิด/ปิดการใช้ pose เสริม เมื่อ context.persons[i].pose ไม่เป็น None
+  use_pose_if_available: true
+  # ความเร็วสัมพัทธ์ (normalized units/sec) ที่ถือว่าเป็น "impact spike"
+  impact_velocity_threshold: 4.0
+  # ค่า IoU ของ bbox ที่ถือว่า "สัมผัสกัน"
+  contact_iou_threshold: 0.02
+
+device:
+  # "auto" -> ใช้ CUDA ถ้ามี ไม่งั้น CPU (มีผลเฉพาะ model_type: pose_gru)
+  prefer: auto
