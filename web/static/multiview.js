@@ -1,6 +1,7 @@
 /* Each source owns its tracker, clock and recording session. */
 let clipQueue=[], multiCards=new Map(), browserSessions=new Map(), multiPolling=false;
-function openMultiView(){document.getElementById('multi-view').classList.remove('hidden');}
+const openingBrowserDevices=new Set();
+function openMultiView(){const section=document.getElementById('multi-view');section.classList.remove('hidden');section.scrollIntoView?.({block:'start',behavior:'smooth'});}
 function multiMessage(text){document.getElementById('multi-message').textContent=text;}
 function uploadWithProgress(file,onProgress){
   return new Promise((resolve,reject)=>{
@@ -73,10 +74,16 @@ async function pollMulti(){
       card.status.textContent=err ? 'เปิดไม่สำเร็จ: '+err : row.state==='starting' ? 'กำลังโหลดโมเดล / เปิดแหล่งภาพ...' : !row.is_running?'AI หยุดแล้ว • คลิปที่โหลดไว้ยังดูได้':`AI ${row.device?.toUpperCase()} • วิเคราะห์ถึง ${row.analysis_sec.toFixed(1)}s`+(card.live?' • บันทึกภาพ (24 ชั่วโมง)':'');
       if(row.recording?.error)card.status.textContent+=' • บันทึกไม่สำเร็จ: '+row.recording.error;
       if(card.recordingError)card.status.textContent+=' • บันทึกไม่สำเร็จ: '+card.recordingError;
+      if(card.frameError)card.status.textContent+=' • ส่งภาพไม่สำเร็จ: '+card.frameError;
+      if(row.camera_warning)card.status.textContent+=' • '+row.camera_warning;
       card.status.textContent+=' • เปิด: '+(row.configured_features?.map(f=>productNames[f] || f).join(' / ') || 'ยังไม่เปิดฟีเจอร์');
       if(card.fallback)card.status.textContent+=' • '+(card.playbackError || 'ภาพ AI ที่ 1x • ใช้ H.264 / WebM เพื่อกรอและเล่น 2x');
       if(row.weights_file)card.status.textContent+=' • '+row.weights_file;
-      if(card.live && row.frame_ready && !card.img.src){card.img.src='/api/stream/feed?camera_id='+row.id;card.img.classList.remove('hidden');card.video.classList.add('hidden');}
+      if(card.live && row.frame_ready && !card.img.src){
+        card.img.onload=()=>{card.img.classList.remove('hidden');card.video.classList.add('hidden');};
+        card.img.onerror=()=>{card.img.classList.add('hidden');if(browserSessions.has(row.id))card.video.classList.remove('hidden');card.status.textContent='รับภาพ AI ไม่สำเร็จ • กำลังแสดงภาพ webcam ต้นฉบับ';card.img.removeAttribute('src');};
+        card.img.src='/api/stream/feed?camera_id='+row.id;
+      }
       if((err || (!row.is_running && row.state!=='starting')) && browserSessions.has(row.id))await stopBrowserSession(row.id);
     }
   }catch(e){multiMessage(e.message);}finally{multiPolling=false;}
@@ -96,29 +103,63 @@ async function listBrowserCameras(){
     devices.forEach((device,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=device.label || 'webcam '+(i+1);select.append(option);});select.value='0';
     const button=document.createElement('button');button.className='bg-cyan-700 rounded px-3 py-2';button.textContent='เปิด webcam ที่เลือก';button.disabled=!devices.length;button.onclick=()=>startBrowserCamera(devices[Number(select.value)],Number(select.value));list.append(select,button);
     multiMessage(devices.length?'เลือก webcam แต่ละตัวเพื่อเปิดพร้อมกัน':'ไม่พบ webcam');
-  }catch(e){multiMessage(e.message);}
+  }catch(e){multiMessage(cameraErrorMessage(e));}
+}
+
+function cameraErrorMessage(error){
+  return ({NotAllowedError:'ไม่ได้รับสิทธิ์กล้อง กรุณาอนุญาตกล้องของเว็บไซต์ และเปิดผ่าน localhost หรือ HTTPS',
+    NotReadableError:'กล้องถูกแอปอื่นใช้อยู่หรือระบบเปิดกล้องไม่ได้ ปิดแอปที่ใช้กล้องแล้วลองใหม่',
+    NotFoundError:'ไม่พบ webcam ที่เลือก กรุณาค้นหากล้องใหม่',
+    OverconstrainedError:'กล้องที่เลือกไม่พร้อมหรือเปลี่ยนอุปกรณ์ กรุณาค้นหากล้องใหม่'}[error?.name] || error?.message || 'เปิด webcam ไม่สำเร็จ');
+}
+async function waitBrowserVideo(video,timeoutMs=10000){
+  const deadline=performance.now()+timeoutMs;
+  while(performance.now()<deadline){
+    if(video.error)throw new Error('เบราว์เซอร์อ่านภาพจาก webcam ไม่ได้');
+    if(video.readyState>=2 && video.videoWidth>0 && video.videoHeight>0)return;
+    await new Promise(resolve=>setTimeout(resolve,50));
+  }
+  throw new Error('webcam ไม่ส่งภาพ ตรวจฝาปิดเลนส์ สิทธิ์กล้อง หรือเลือกกล้องตัวอื่น');
 }
 async function startBrowserCamera(device,index){
-  multiMessage('กำลังเปิด '+(device.label || 'webcam')+'...');let media,profile;
+  multiMessage('กำลังเปิด '+(device.label || 'webcam')+'...');let media,profile,raw,ownsOpening=false;
   try{
-    if([...browserSessions.values()].some(s=>s.device===device.deviceId))throw new Error('กล้องนี้เปิดอยู่แล้ว');
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('เปิดผ่าน localhost หรือ HTTPS เพื่อใช้ webcam');
+    if(openingBrowserDevices.has(device.deviceId) || [...browserSessions.values()].some(s=>s.device===device.deviceId) || window.mainCameraDeviceId===device.deviceId)throw new Error('กล้องนี้เปิดอยู่แล้ว');
+    openingBrowserDevices.add(device.deviceId);ownsOpening=true;
     const options=await productRequest('/api/runtime/options');if([...multiCards.values()].filter(c=>c.running!==false && !c.missing).length>=options.max_streams)throw new Error('หยุดแหล่งภาพก่อนเปิดกล้องเพิ่ม');
     media=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:device.deviceId},width:{ideal:960},height:{ideal:540}},audio:false});
-    const raw=document.createElement('video');raw.muted=true;raw.playsInline=true;raw.srcObject=media;await raw.play();
+    raw=document.createElement('video');raw.muted=true;raw.playsInline=true;raw.srcObject=media;
+    raw.setAttribute('aria-hidden','true');raw.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+    document.body.append(raw);await raw.play();await waitBrowserVideo(raw);
     const width=Math.min(960,raw.videoWidth),height=Math.round(raw.videoHeight*width/raw.videoWidth);
     profile=await newStreamProfile(device.label || 'webcam '+(index+1),'browser://'+device.deviceId);
     await productRequest('/api/multistream/start',{camera_id:profile.id,source:'browser://'+profile.id,model:document.getElementById('pose-model').value || 'yolo26n-pose.pt',device:document.getElementById('inference-device').value,decode_device:'cpu',browser_width:width,browser_height:height});
     const card=addMultiCard(profile,'browser://'+profile.id,true);card.video.srcObject=media;card.video.play().catch(()=>{});
     const session={device:device.deviceId,media,raw,width,height,started:performance.now(),closed:false,recorder:null,recordTimer:null};browserSessions.set(profile.id,session);
-    await beginRecordingSegment(profile.id,session);
-    sendCameraFrames(profile.id,session);multiMessage('กล้องเปิดแล้ว • บันทึกภาพ ไม่มีเสียง • เก็บ 24 ชั่วโมง');await loadCameras();
-  }catch(e){media?.getTracks().forEach(t=>t.stop());multiMessage(e.message);if(profile){await stopBrowserSession(profile.id);const card=multiCards.get(profile.id);if(card){card.card.remove();multiCards.delete(profile.id);}try{await productRequest('/api/multistream/'+profile.id+'/stop',{});}catch(_){}}}
+    session.frameTask=sendCameraFrames(profile.id,session);
+    beginRecordingSegment(profile.id,session).then(()=>{if(!session.closed)multiMessage('กล้องเปิดแล้ว • บันทึกภาพ ไม่มีเสียง • เก็บ 24 ชั่วโมง');})
+      .catch(error=>{if(!session.closed){card.recordingError=error.message;multiMessage('ภาพกล้องยังเปิดอยู่ • บันทึกไม่ได้: '+error.message);}});
+    multiMessage('กล้องเปิดแล้ว • แสดงภาพต้นฉบับระหว่างเตรียม AI');await loadCameras();
+  }catch(e){media?.getTracks().forEach(t=>t.stop());raw?.pause();raw?.remove();multiMessage(cameraErrorMessage(e));if(profile){await stopBrowserSession(profile.id);const card=multiCards.get(profile.id);if(card){card.card.remove();multiCards.delete(profile.id);}try{await productRequest('/api/multistream/'+profile.id+'/stop',{});}catch(_){}}}
+  finally{if(ownsOpening)openingBrowserDevices.delete(device.deviceId);}
 }
 async function waitCameraSession(id,session){
   const deadline=performance.now()+45000;
-  while(!session.closed && performance.now()<deadline){const data=await productRequest('/api/multistream');const row=data.find(r=>r.id===id);if(row?.error)throw new Error(row.error);if(row?.session_id){multiCards.get(id).session=row.session_id;return row.session_id;}await new Promise(resolve=>setTimeout(resolve,200));}
+  while(!session.closed && performance.now()<deadline){
+    const data=await productRequest(session.main?'/api/status':'/api/multistream');
+    const row=session.main?data:data.find(r=>r.id===id);
+    if(row?.error || row?.last_error)throw new Error(row.error || row.last_error);
+    if(session.main && (row.current_source!==session.source || row.session_id!==session.card.session))throw new Error('ตัวเล่นหลักเปลี่ยนแหล่งภาพแล้ว');
+    const card=browserTransportCard(id,session);
+    if(row?.session_id && card){card.session=row.session_id;return row.session_id;}
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
   throw new Error('เปิดกล้องใช้เวลานานเกินไป ลองเปิดใหม่');
 }
+function browserTransportCard(id,session){return session.main?session.card:multiCards.get(id);}
+function browserTransportUrl(id,session,kind){return session.main?'/api/stream/'+kind:'/api/multistream/'+id+'/'+kind;}
+function browserTransportMessage(session,text){if(session.main)session.message(text);else multiMessage(text);}
 async function beginRecordingSegment(id,session){
   const sid=await waitCameraSession(id,session);
   const mime=['video/webm;codecs=vp8','video/webm'].find(t=>window.MediaRecorder?.isTypeSupported(t));
@@ -131,22 +172,24 @@ async function beginRecordingSegment(id,session){
     recorder.onstop=async()=>{
       const end=stoppedAt ?? (performance.now()-session.started)/1000;clearTimeout(segmentTimer);
       const form=new FormData();form.append('file',new Blob(chunks,{type:mime}),'segment.webm');form.append('session_id',sid);form.append('start_s',start);form.append('end_s',end);
-      try{const res=await fetch('/api/multistream/'+id+'/recording',{method:'POST',body:form});if(!res.ok)throw new Error((await res.json()).detail || 'บันทึกไม่สำเร็จ');}
-      catch(e){const card=multiCards.get(id);if(card){card.recordingError=e.message;card.status.textContent='บันทึกไม่สำเร็จ: '+e.message;}multiMessage('ภาพยังเปิดอยู่ แต่บันทึกไม่สำเร็จ: '+e.message);}
+      try{const res=await fetch(browserTransportUrl(id,session,'recording'),{method:'POST',body:form});if(!res.ok)throw new Error((await res.json()).detail || 'บันทึกไม่สำเร็จ');}
+      catch(e){const card=browserTransportCard(id,session);if(card){card.recordingError=e.message;card.status.textContent='บันทึกไม่สำเร็จ: '+e.message;}if(!session.closed)browserTransportMessage(session,'ภาพยังเปิดอยู่ แต่บันทึกไม่สำเร็จ: '+e.message);}
     };
-    recorder.onerror=e=>{const card=multiCards.get(id);if(card)card.recordingError=e.error?.message || 'ตัวบันทึกกล้องหยุด';multiMessage('บันทึกภาพไม่สำเร็จ กรุณาเปิดกล้องใหม่');};
+    recorder.onerror=e=>{const card=browserTransportCard(id,session);if(card)card.recordingError=e.error?.message || 'ตัวบันทึกกล้องหยุด';browserTransportMessage(session,'บันทึกภาพไม่สำเร็จ กรุณาเปิดกล้องใหม่');};
     recorder.start();segmentTimer=setTimeout(()=>{stoppedAt=(performance.now()-session.started)/1000;if(recorder.state!=='inactive')recorder.stop();next();},10000);session.recordTimer=segmentTimer;
   }
   next();
 }
 async function sendCameraFrames(id,session){
   const canvas=document.createElement('canvas');canvas.width=session.width;canvas.height=session.height;const c=canvas.getContext('2d');
+  try{await waitCameraSession(id,session);}catch(error){const card=browserTransportCard(id,session);if(card)card.frameError=error.message;browserTransportMessage(session,'ส่งภาพกล้องไม่สำเร็จ: '+error.message);return;}
   while(!session.closed){
-    try{const sid=multiCards.get(id)?.session;if(sid){c.drawImage(session.raw,0,0,canvas.width,canvas.height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.75));const form=new FormData();form.append('file',blob,'frame.jpg');form.append('session_id',sid);form.append('timestamp_ms',performance.now()-session.started);const res=await fetch('/api/multistream/'+id+'/frame',{method:'POST',body:form});if(!res.ok)throw new Error((await res.json()).detail);}}
-    catch(e){multiMessage('ส่งภาพกล้องไม่สำเร็จ: '+e.message);}
+    try{const card=browserTransportCard(id,session),sid=card?.session;if(sid && session.raw.readyState>=2){c.drawImage(session.raw,0,0,canvas.width,canvas.height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.75));if(session.closed)break;if(!blob)throw new Error('อ่านภาพ webcam ไม่สำเร็จ');const form=new FormData();form.append('file',blob,'frame.jpg');form.append('session_id',sid);form.append('timestamp_ms',performance.now()-session.started);const res=await fetch(browserTransportUrl(id,session,'frame'),{method:'POST',body:form});if(!res.ok)throw new Error((await res.json()).detail);card.frameError=null;}}
+    catch(e){const card=browserTransportCard(id,session);if(card)card.frameError=e.message;browserTransportMessage(session,'ส่งภาพกล้องไม่สำเร็จ: '+e.message);}
     await new Promise(resolve=>setTimeout(resolve,100));
   }
 }
-async function stopBrowserSession(id){const session=browserSessions.get(id);if(!session)return;session.closed=true;clearTimeout(session.recordTimer);if(session.recorder?.state==='recording')session.recorder.stop();session.media.getTracks().forEach(t=>t.stop());session.raw.pause();browserSessions.delete(id);}
+function releaseBrowserCamera(session){session.closed=true;clearTimeout(session.recordTimer);if(session.recorder?.state==='recording')session.recorder.stop();session.media.getTracks().forEach(t=>t.stop());session.raw.pause();session.raw.remove();session.raw.srcObject=null;}
+async function stopBrowserSession(id){const session=browserSessions.get(id);if(!session)return;releaseBrowserCamera(session);browserSessions.delete(id);}
 async function stopMulti(id){try{await stopBrowserSession(id);const card=multiCards.get(id);if(!card.missing)await productRequest('/api/multistream/'+id+'/stop',{});card.video.pause();card.img.src='';card.card.remove();multiCards.delete(id);await pollMulti();}catch(e){multiMessage(e.message);}}
 window.addEventListener('pagehide',()=>{for(const id of browserSessions.keys()){const session=browserSessions.get(id);session.closed=true;session.media.getTracks().forEach(t=>t.stop());fetch('/api/multistream/'+id+'/stop',{method:'POST',keepalive:true}).catch(()=>{});}});

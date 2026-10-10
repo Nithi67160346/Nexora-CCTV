@@ -1,4 +1,16 @@
-# การตรวจชุดสำหรับ server — 9 ตุลาคม 2026
+# การตรวจชุดสำหรับ QA / server — 11 ตุลาคม 2026
+
+- ตัวรัน Docker: 62 tests ผ่าน รวม CPU/GPU อัตโนมัติ, ready image, รวม image parts, checksum ผิด, ไฟล์ขาด และไม่ build/import เมื่อใช้ CheckOnly / NoBuild
+- เว็บชุดใหม่: 62 tests ผ่าน ครอบคลุม webcam, วงจรเริ่ม/หยุด, frame playback, upload/delete, LSTM v3 และตัวเล่นหลัก
+- ติดตั้งโมเดล: 5 tests ผ่าน ตรวจ checksum และป้องกัน path escape / เขียนทับ
+- UI: 8 Node suites ผ่าน ได้แก่ browser camera, clip library, event replay, frame player, main webcam, product, review และ feature toggle
+- Compose CPU/GPU config ผ่าน; Python ทุกไฟล์ในชุด Git parse ผ่าน; ตรวจ manifest โมเดล 14 ไฟล์และไฟล์ทุกตัวใน QA ZIP
+- reuse image ที่ผู้ใช้ build แล้ว ไม่ build/export ซ้ำ แยก TAR เดิมเป็น 3 ส่วนต่ำกว่า 2 GiB และตรวจ SHA256 ทั้ง TAR ก่อนจัด Release
+- ก่อนจัด Release ได้ทดสอบ ready image เดียวกันบนเครื่องนี้: CPU และ RTX 3070 / CUDA Healthy; smoke ใช้เฟรมจำลองสั้น ตรวจ runtime และโมเดลสำเร็จ
+
+Regression หลายรายการใช้โมเดล/อุปกรณ์จำลอง ไม่ได้วัดความแม่นยำของโมเดล ไม่ได้รัน training หรือคลิปยาว และยังไม่ได้ deploy บน server ของผู้ใช้หรือทดสอบฮาร์ดแวร์อื่น ชุดพร้อมรันรองรับ Windows Intel/AMD x64 กับ Docker Desktop Linux Engine เท่านั้นในรอบนี้
+
+## ผลตรวจรุ่นก่อนหน้า — 9 ตุลาคม 2026
 
 - Python regression ของตัวเล่นหลักและ feature: 181 cases, 180 ผ่าน / 1 skipped, ไม่มี failure หรือ error
 - สคริปต์ติดตั้งโมเดล: 5 tests ผ่าน ครอบคลุม checksum ผิด, ไฟล์ขาด, path escape และการป้องกันเขียนทับ

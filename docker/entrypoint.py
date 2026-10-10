@@ -1,4 +1,4 @@
-"""Fail clearly before starting the server container; never download missing weights."""
+"""Fail clearly before starting the QA container; never download missing weights."""
 import importlib
 import os
 from pathlib import Path
@@ -8,7 +8,7 @@ import sys
 def check_environment(root, environment, importer=importlib.import_module):
     weights = Path(root) / 'models/yolo26n-pose.pt'
     if not weights.is_file() or weights.stat().st_size == 0:
-        raise RuntimeError('Missing models/yolo26n-pose.pt. Extract the complete server Release ZIP; '
+        raise RuntimeError('Missing models/yolo26n-pose.pt. Extract the complete QA ZIP; '
                            'models must be mounted at /app/models. No weights were downloaded.')
     device = environment.get('NEXORA_DEVICE', 'cpu')
     if device not in ('cpu', 'cuda'):
@@ -19,13 +19,13 @@ def check_environment(root, environment, importer=importlib.import_module):
                            'support and the NVIDIA driver, or launch the CPU container explicitly.')
     action_weights = Path(root)/'best_lstm_model.pth'
     if not action_weights.is_file() or action_weights.stat().st_size == 0:
-        raise RuntimeError('Missing best_lstm_model.pth. Extract the current server Release ZIP with the LSTM '
+        raise RuntimeError('Missing best_lstm_model.pth. Extract the current QA ZIP with the LSTM '
                            'checkpoint mounted at /app/best_lstm_model.pth. No weights were downloaded.')
     for name in ('ai1_isolation_forest_yolo.pkl','ai1_scaler_yolo.pkl','ai1_threshold_yolo.pkl',
                  'ai2_fall_detector_yolo.pkl','feature_names_yolo.pkl'):
         path=Path(root)/'Fall/models_yolo'/name
         if not path.is_file() or path.stat().st_size==0:
-            raise RuntimeError('Missing Fall/models_yolo/'+name+'. Extract the complete current server Release ZIP.')
+            raise RuntimeError('Missing Fall/models_yolo/'+name+'. Extract the complete current QA ZIP.')
     for module in ('numpy', 'yaml', 'cv2', 'torchvision', 'ultralytics', 'scipy', 'lap',
                    'fastapi', 'uvicorn', 'multipart', 'PIL', 'httpx', 'pandas', 'sklearn', 'joblib', 'threadpoolctl'):
         importer(module)

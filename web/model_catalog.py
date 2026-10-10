@@ -16,7 +16,7 @@ def resolve_pose_weights(root, name, current=None):
     if not candidate.is_file() and current and Path(current).name == name:
         candidate = Path(current)
     if not candidate.is_file():
-        raise ValueError(f'ยังไม่มี {name} ใน models กรุณาติดตั้งโมเดลจาก Release ด้วย scripts/install_models.py ก่อน')
+        raise ValueError(f'ยังไม่มี {name} ใน models กรุณารัน scripts/download_pose_model.py ก่อน')
     return candidate.resolve()
 
 

@@ -24,6 +24,7 @@ function renderViolenceJob(job) {
     violenceNode('message').textContent = 'วิเคราะห์เสร็จ • '+job.device.toUpperCase();
     violenceNode('result').textContent = (result.fighting ? 'โมเดลจัดคลิปนี้เป็นการทำร้ายร่างกาย' : 'โมเดลจัดคลิปนี้เป็นปกติ')+
       '\nคะแนนคลาสทำร้าย: '+(result.probability_fighting*100).toFixed(2)+'% (เกณฑ์มากกว่า 50%)'+
+      (result.model_version==='v3'?'\nโมเดล v3 • LSTM 2 ชั้น':'')+
       '\nใช้ '+result.sampled_frames+' เฟรม จากคลิป '+result.duration_s.toFixed(2)+' วินาที';
   }
 }

@@ -17,10 +17,12 @@ function closeProductModal(kind) { document.getElementById(kind+'-modal').classL
 function setProfileSource(source) {
   currentSource = source || '';
   const select = document.getElementById('sample-selector');
-  if (source && !Array.from(select.options).some(option => option.value === source)) {
-    const option = document.createElement('option'); option.value = source; option.textContent = 'แหล่งภาพของห้องที่เลือก'; select.append(option);
+  const isClip=source && !/^\d+$/.test(source) && !/^(browser|rtsp|https?):/.test(source);
+  if (isClip && !Array.from(select.options).some(option => option.value === source)) {
+    const option = document.createElement('option'); option.value = source; option.textContent = 'คลิปของห้องที่เลือก'; select.append(option);
   }
-  select.value = source || '';
+  select.value = isClip ? source : '';
+  if(typeof updateClipDeleteButton==='function')updateClipDeleteButton();
   document.getElementById('active-source-title').textContent = window.activeCameraName + (source ? ' • พร้อมเปิดแหล่งภาพ' : ' • เลือกคลิปเพื่อทดลอง');
 }
 function renderCameras(data) {
@@ -102,8 +104,8 @@ function updateProductStatus(data) {
   const sceneNode=document.getElementById('main-violence-result'), diagnostic=data.interaction_diagnostics;
   if(sceneNode){
     const result=diagnostic?.model_kind==='resnet18_lstm'?diagnostic.result:null;
-    sceneNode.textContent=data.product_revision!=='qa-fall-lstm-main-20261007-fall54fix1'?'เว็บนี้ยังใช้เซิร์ฟเวอร์เก่า ส่งออกรีวิว/โปรไฟล์ แล้วให้ผู้ดูแลอัปเดต container ตามคู่มือติดตั้ง server':!data.is_running || !diagnostic || diagnostic.model_kind!=='resnet18_lstm'?'':result?
-      `ผลล่าสุด LSTM • ${String(data.current_source || '').split(/[\\/]/).pop()} • ช่วง ${(result.window_start_ms/1000).toFixed(1)}–${(result.window_end_ms/1000).toFixed(1)}s • คะแนนทำร้าย ${(result.probability_fighting*100).toFixed(1)}%${result.fighting?' • กรุณาตรวจสอบภาพ':''}`:
+    sceneNode.textContent=data.product_revision!=='qa-upload-delete-20261010'?'หน้าเว็บกับเซิร์ฟเวอร์คนละรุ่น กรุณารีเฟรชหน้าเว็บ หากยังพบข้อความนี้ให้อัปเดตระบบเป็นรุ่นล่าสุด':!data.is_running || !diagnostic || diagnostic.model_kind!=='resnet18_lstm'?'':result?
+      `ผลล่าสุด LSTM${result.model_version==='v3'?' v3 (2 ชั้น)':''} • ${String(data.current_source || '').split(/[\\/]/).pop()} • ช่วง ${(result.window_start_ms/1000).toFixed(1)}–${(result.window_end_ms/1000).toFixed(1)}s • คะแนนทำร้าย ${(result.probability_fighting*100).toFixed(1)}%${result.fighting?' • กรุณาตรวจสอบภาพ':''}`:
       `LSTM กำลังเก็บภาพ ${diagnostic.sampled_frames}/16 เฟรม`;
   }
   const enabled=data.configured_features || data.enabled_features || Object.entries(data.health?.features || {}).filter(([,s])=>s.state!=='disabled').map(([name])=>name);

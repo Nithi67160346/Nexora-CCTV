@@ -23,8 +23,11 @@ function updateAIPlayback(){
     (lastReviewStatus.current_source===reviewView.source && lastReviewStatus.stage==='analysis_complete')) && reviewView.analysis>=seconds-.1;
   const ahead=reviewView.rows.some(row=>row.time_s>=seconds+.3);
   const fullClip=reviewView.initialOpen && Number.isFinite(reviewVideo.duration) && reviewVideo.duration>0 && reviewVideo.duration<=60;
-  // Only buffer at open/seek. A delayed overlay poll must not pause a running video.
-  if(waitForAI && reviewView.needsAIBuffer && (!matchingReviewRow() || (!complete && (fullClip || !ahead)))){
+  // Buffer again when playback catches the chronological analysis watermark.
+  // Missing overlay responses alone must not stall an already analysed section.
+  const caughtAI=!complete && seconds>=Math.max(0,reviewView.analysis-.05);
+  if(waitForAI && (caughtAI || (reviewView.needsAIBuffer && (!matchingReviewRow() || (!complete && (fullClip || !ahead)))))){
+    reviewView.needsAIBuffer=true;
     reviewView.waitingAI=true;reviewVideo.pause();
     loadingStatus(true,fullClip?`กำลังวิเคราะห์คลิปก่อนเล่น ${Math.min(100,Math.round(reviewView.analysis/reviewVideo.duration*100))}% • ดูผลได้ในรอบแรก`:`กำลังรอผล AI ช่วง ${formatTime(seconds)} • เมื่อพร้อมจะเล่นอัตโนมัติ`);
   }else{
@@ -164,7 +167,7 @@ window.syncReview=function(data) {
   btnPlay.innerHTML=reviewView.waitingAI?'❚❚ หยุดรอ':reviewVideo.paused?'▶ เล่นต่อ':'❚❚ พัก';
   document.getElementById('playback-progress').textContent=reviewView.archive ?
     (reviewView.evidenceUrl?'ดูย้อนหลังพร้อมผล AI ของรอบที่แจ้งเตือน • '+(reviewView.evidenceMessage || (!matchingReviewRow()?'ไม่มีผล AI ตรงเวลานี้':'ไม่วิเคราะห์ซ้ำ')):'ดูวิดีโอย้อนหลัง • ไม่สร้างผล AI ใหม่')
-    : `คลิป ${sec.toFixed(1)}s • AI วิเคราะห์ถึง ${reviewView.analysis.toFixed(1)}s`+(!matchingReviewRow()?' • ยังไม่มีผล AI ตรงเวลานี้':matchingReviewRow().persons?.length===0?' • AI ประมวลผลแล้ว ยังไม่พบคนผ่านเกณฑ์':'')+(reviewView.cacheError?' • เก็บผลย้อนหลังไม่พร้อม: '+reviewView.cacheError:'')+(reviewVideo.ended && !reviewView.analysisComplete && data.is_running?' • ภาพเล่นจบแล้ว แต่ AI ยังวิเคราะห์ต่อ ไม่ต้องเริ่มคลิปใหม่':'');
+    : `คลิป ${sec.toFixed(3)}s • AI วิเคราะห์ถึง ${reviewView.analysis.toFixed(1)}s`+(!matchingReviewRow()?' • ยังไม่มีผล AI ตรงเวลานี้':matchingReviewRow().persons?.length===0?' • AI ประมวลผลแล้ว ยังไม่พบคนผ่านเกณฑ์':'')+(reviewView.cacheError?' • เก็บผลย้อนหลังไม่พร้อม: '+reviewView.cacheError:'')+(reviewVideo.ended && !reviewView.analysisComplete && data.is_running?' • ภาพเล่นจบแล้ว แต่ AI ยังวิเคราะห์ต่อ ไม่ต้องเริ่มคลิปใหม่':'');
   if(!reviewView.archive && (data.last_error || !data.is_running)){
     reviewView.userWantsPlay=false;reviewView.waitingAI=false;reviewVideo.pause();loadingStatus(false);
     document.getElementById('playback-progress').textContent=data.last_error || 'การวิเคราะห์หยุดแล้ว กรุณาเปิดคลิปอีกครั้ง';return;
@@ -180,7 +183,7 @@ startStreamWithSource=async function(source) {
     if(!await previousStart(source)){loadingStatus(false);return;}
     const status=await productRequest('/api/status');
     if (status.last_error || !status.is_running) {loadingStatus(false);return;}
-    if (!status.is_live) openReview(source,undefined,0,false,status.session_id,status.evidence_revision);
+    if (!status.is_live && !status.frame_by_frame) openReview(source,undefined,0,false,status.session_id,status.evidence_revision);
   }catch(e){loadingStatus(false);showToast(e.message);}finally{viewStartBusy=false;endUiOperation();}
 };
 const previousPlay=togglePlay,previousPause=pauseStream,previousSeek=onSeekSliderChange,previousDelta=seekDelta,previousSpeed=setSpeed,previousStop=stopStream;
@@ -215,13 +218,6 @@ setSpeed=async function(speed){
   showToast('ความเร็วดูคลิป '+speed+'x • AI วิเคราะห์แยกจากตัวเล่น');
 };
 stopStream=async function(){const archive=reviewView.archive;closeReview();loadingStatus(false);if(archive){document.getElementById('active-source-title').textContent=window.activeCameraName || 'ตัวเล่นหลัก';await fetchStatus();refreshFeedImage();return;}return previousStop();};
-async function playEvent(id) {
-  beginUiOperation();
-  loadingStatus(true,'กำลังเปิดวิดีโอช่วงแจ้งเตือน...');
-  try{const result=await productRequest('/api/events/'+encodeURIComponent(id)+'/playback');openReview(result.source,result.url,result.time_s,true,null,null,result.evidence_url);document.getElementById('active-source-title').textContent='ดูย้อนหลังช่วงแจ้งเตือน';reviewVideo.scrollIntoView?.({behavior:'smooth',block:'center'});}
-  catch(error){loadingStatus(false);showToast(error.message);}
-  finally{endUiOperation();}
-}
 async function setLastSeenNotifications(enabled) {try{await productRequest('/api/notifications/settings',{last_seen_update:enabled});await fetchEvents();}catch(e){showToast(e.message);}}
 async function loadRecordingList(){
   const list=document.getElementById('recording-list');list.replaceChildren();
@@ -269,7 +265,7 @@ function paintEvidence(canvas,video,rows,seconds) {
     c.fillStyle=c.strokeStyle;c.fillText(`คน #${p.track_id}${fallScore}${red?' • มีเหตุเตือน':p.observation_kind==='bbox_only'?' • ข้อต่อไม่พร้อม':warn?' • กำลังตรวจสอบ':''}`,Math.max(0,Math.min(canvas.width-260,ox+x1*scale)),Math.max(16,oy+y1*scale-5));
   }
 }
-function paintReview(){if(reviewView.active && (!reviewView.archive || reviewView.evidenceUrl))paintEvidence(reviewCanvas,reviewVideo,reviewView.rows,reviewVideo.currentTime);requestAnimationFrame(paintReview);}
+function paintReview(){if(reviewView.active && (!reviewView.archive || reviewView.evidenceUrl)){updateAIPlayback();paintEvidence(reviewCanvas,reviewVideo,reviewView.rows,reviewVideo.currentTime);}requestAnimationFrame(paintReview);}
 requestAnimationFrame(paintReview);
 async function refreshReviewEvidence(force=false){
   if(!reviewView.active || (reviewView.archive && !reviewView.evidenceUrl) || (reviewFetchBusy && !force))return;

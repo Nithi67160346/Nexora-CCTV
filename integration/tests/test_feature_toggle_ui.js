@@ -64,7 +64,7 @@ const status = enabled_features => ({enabled_features,is_running:false,is_paused
   await camera.ctx.fetchStatus();
   assert.equal(camera.element('stream-placeholder-message').textContent,'เปิดเว็บแคมไม่ได้');
   assert(camera.element('camera-warning').classes.has('hidden'));
-  assert(html.includes('<option value="1">'), 'a second webcam must be selectable');
+  assert(html.includes('id="main-camera-selector"'), 'the primary camera must use the browser device picker');
   assert(!html.includes('toggle-seizure') && !html.includes('อาการชัก'), 'archived feature must be absent from the page');
   console.log('PASS: stale status response cannot undo checkbox; unchanged runtime cannot report success');
   console.log('PASS: camera selection, waiting frame, dark advisory and capture error states');

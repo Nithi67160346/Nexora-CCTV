@@ -201,6 +201,7 @@
 
           <!-- Video Stream Feed -->
           <img id="stream-feed-img" src="" alt="Live Feed" class="w-full h-full object-contain hidden" />
+          <video id="main-camera-preview" playsinline muted class="hidden absolute inset-0 w-full h-full object-contain" aria-label="ภาพ webcam ตัวเล่นหลัก"></video>
           <video id="native-video" playsinline muted preload="metadata" class="hidden absolute inset-0 w-full h-full object-contain" aria-label="ตัวเล่นคลิป"></video>
           <canvas id="ai-playback-overlay" class="hidden absolute inset-0 w-full h-full pointer-events-none"></canvas>
           <div id="loading-status" class="hidden absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-cyan-300 gap-3 z-30" role="status" aria-live="polite"><i class="fa-solid fa-spinner fa-spin text-3xl"></i><strong id="loading-message">กำลังเปิดภาพ...</strong><span id="loading-elapsed" class="text-xs"></span></div>
@@ -270,9 +271,10 @@
             </div>
 
             <!-- Playback Speed & Loop Selector -->
-            <div class="flex items-center space-x-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
               <label class="text-xs text-cyan-300"><input id="clip-loop" type="checkbox" onchange="setClipLoop(this.checked)"> วนคลิป</label>
-              <label class="text-xs text-cyan-300" title="คลิปไม่เกิน 60 วินาทีรอวิเคราะห์ครบก่อนเล่น คลิปยาวรอผลช่วงเริ่มต้น หลังกรอรอผลตรงเวลา จากนั้นเล่นต่อเนื่อง"><input id="wait-for-ai" type="checkbox" checked onchange="setWaitForAI(this.checked)"> รอ AI ก่อนเล่น</label>
+              <label class="text-xs text-cyan-300" title="ใช้กับคลิปที่จะเปิดครั้งถัดไป ภาพพร้อมผล AI ของแต่ละเฟรมแสดงเสร็จก่อนอ่านเฟรมถัดไป ความเร็วขึ้นกับ AI"><input id="frame-by-frame" type="checkbox" checked onchange="setFramePlaybackMode(this.checked)"> เล่นตาม AI ทีละเฟรม</label>
+              <label class="text-xs text-cyan-300" title="สำหรับการเล่นวิดีโอปกติ: พักภาพเมื่อ AI ตามไม่ทัน"><input id="wait-for-ai" type="checkbox" checked onchange="setWaitForAI(this.checked)"> รอ AI ก่อนเล่น</label>
               <span class="text-slate-400 text-[11px]">ความเร็ว:</span>
               <div class="flex items-center bg-slate-850 border border-slate-800 rounded-lg p-0.5">
                 <button onclick="setSpeed(0.5)" id="speed-05" class="px-2 py-0.5 rounded text-[11px] text-slate-400 hover:text-white">0.5x</button>
@@ -284,24 +286,31 @@
         </div>
 
         <div id="camera-warning" class="hidden px-4 py-2 text-sm text-amber-300 bg-amber-950/40" role="status"></div>
+        <div id="main-camera-controls" class="bg-slate-850 px-4 py-3 border-t border-slate-800 space-y-2">
+          <div class="flex flex-wrap gap-2 items-center text-xs">
+            <button onclick="listMainBrowserCameras()" class="bg-cyan-700 rounded px-3 py-2">ค้นหา webcam</button>
+            <select id="main-camera-selector" aria-label="เลือก webcam สำหรับตัวเล่นหลัก" class="bg-slate-900 border border-slate-700 rounded px-2 py-2 max-w-full" disabled><option value="">ค้นหากล้องก่อน</option></select>
+            <button id="main-camera-open" onclick="openSelectedMainCamera()" class="bg-cyan-700 rounded px-3 py-2 disabled:opacity-50" disabled>เปิด webcam ในตัวเล่นหลัก</button>
+          </div>
+          <p id="main-camera-message" class="text-xs text-cyan-300" role="status" aria-live="polite">เลือกกล้องของเครื่องนี้ • อนุญาตกล้องผ่านเบราว์เซอร์ • ใช้ได้กับ Docker / server</p>
+        </div>
         <!-- Video Source Selection Footer -->
         <div class="bg-slate-850 px-4 py-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <!-- Video Source Selector Dropdown -->
           <div class="flex items-center space-x-2 flex-1 max-w-xl">
-            <span class="text-xs text-slate-400 whitespace-nowrap"><i class="fa-solid fa-film text-brand-400"></i> แหล่งคลิป:</span>
-            <select id="sample-selector" onchange="onSelectSample(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand-500 w-full truncate">
-              <option value="">-- เลือกคลิปตัวอย่างจาก Dataset หรือกล้อง Webcam --</option>
-              <option value="0">📷 กล้องหมายเลข 0 (เครื่องที่รันระบบ)</option>
-              <option value="1">📷 กล้องหมายเลข 1 — ลองเลือกเมื่อกล้อง 0 จอดำ</option>
-              <option value="2">📷 กล้องหมายเลข 2</option>
-              <option value="3">📷 กล้องหมายเลข 3</option>
-            </select>
+            <span class="text-xs text-slate-400 whitespace-nowrap"><i class="fa-solid fa-film text-brand-400"></i> คลิปที่อัปโหลด:</span>
+            <div id="clip-library-container" class="min-w-0 w-full">
+              <button id="clip-library-toggle" onclick="toggleClipLibrary()" aria-label="เลือกคลิปที่อัปโหลด" aria-controls="clip-library-list" aria-expanded="false" aria-haspopup="dialog" class="bg-slate-900 border border-cyan-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 w-full flex justify-between gap-2">
+                <span id="clip-library-selected" class="truncate">-- อัปโหลดคลิปเพื่อเพิ่มรายการ --</span><span aria-hidden="true">▾</span>
+              </button>
+              <select id="sample-selector" aria-hidden="true" tabindex="-1" onchange="onSelectSample(this.value)" class="hidden"><option value=""></option></select>
+            </div>
           </div>
-
           <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1.5 transition whitespace-nowrap">
-            <i class="fa-solid fa-cloud-arrow-up text-brand-400"></i> อัปโหลดวิดีโอ
-            <input type="file" id="video-upload-input" accept="video/*" multiple onchange="handleFileUpload(this.files)" class="hidden">
+            <i class="fa-solid fa-cloud-arrow-up text-brand-400"></i> อัปโหลดคลิป (เลือกหลายไฟล์ได้)
+            <input type="file" id="video-upload-input" accept=".mp4,.webm,.avi,.mov,.mkv" multiple onchange="handleFileUpload(this.files)" class="hidden">
           </label>
+          <p id="clip-library-message" role="status" aria-live="polite" class="text-xs text-cyan-300 w-full">อัปโหลดหนึ่งหรือหลายคลิป แล้วเลือกชื่อในรายการเพื่อเริ่มประมวลผล • ไม่เกิน 2 GB ต่อไฟล์</p>
         </div>
 
       </div>
@@ -675,7 +684,7 @@
     const btnPlay = document.getElementById('btn-play');
 
     window.addEventListener('DOMContentLoaded', () => {
-      loadSampleVideos();
+      loadUploadedClips();
       startPolling();
       setupCanvasEvents();
 
@@ -735,35 +744,6 @@
       pollInterval = setInterval(refreshDashboard, 1200);
     }
 
-    async function loadSampleVideos() {
-      try {
-        const res = await fetch('/api/samples');
-        const samples = await res.json();
-        const selector = document.getElementById('sample-selector');
-
-        // Group by category
-        const groups = {};
-        samples.forEach(s => {
-          if (!groups[s.category]) groups[s.category] = [];
-          groups[s.category].push(s);
-        });
-
-        for (const [cat, items] of Object.entries(groups)) {
-          const optgroup = document.createElement('optgroup');
-          optgroup.label = cat;
-          items.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item.path;
-            opt.textContent = item.name;
-            optgroup.appendChild(opt);
-          });
-          selector.appendChild(optgroup);
-        }
-      } catch (e) {
-        console.error("Failed to load sample videos", e);
-      }
-    }
-
     async function fetchStatus() {
       const featureRevision = toggleFeatureState.revision || 0;
       const cameraRevision = window.cameraRevision || 0;
@@ -789,7 +769,7 @@
         document.getElementById('fps-label').textContent = `${data.fps.toFixed(1)} FPS`;
         document.getElementById('tracks-label').textContent = `${data.active_tracks_count} คน`;
         document.getElementById('weights-badge').textContent = data.weights_file;
-        document.getElementById('runtime-badge').textContent = data.product_revision==='qa-fall-lstm-main-20261007-fall54fix1'?`เว็บหลัก Fall 54 + LSTM • ${data.runtime==='docker'?'Docker':'Native'} • ${data.product_revision}`:'เซิร์ฟเวอร์เก่า • ต้องเริ่มระบบใหม่';
+        document.getElementById('runtime-badge').textContent = data.product_revision==='qa-upload-delete-20261010'?`เว็บหลัก Fall 54 + LSTM v3 • ${data.runtime==='docker'?'Docker':'Native'} • ${data.product_revision}`:'หน้าเว็บกับเซิร์ฟเวอร์คนละรุ่น • รีเฟรชหน้าเว็บก่อน';
         if (data.video_width && data.video_width > 0) videoNativeWidth = data.video_width;
         if (data.video_height && data.video_height > 0) videoNativeHeight = data.video_height;
 
@@ -811,7 +791,7 @@
           }
           btnPlay.innerHTML = data.is_paused ? '<i class="fa-solid fa-play"></i> <span>เล่นต่อ</span>' : '<i class="fa-solid fa-pause"></i> <span>พัก</span>';
 
-          if (!feedImg.src || feedImg.src.indexOf('/api/stream/feed') === -1) {
+          if (!window.framePlayerActive && (!feedImg.src || feedImg.src.indexOf('/api/stream/feed') === -1)) {
             refreshFeedImage();
           }
 
@@ -852,6 +832,7 @@
         if (data.camera_warning) cameraWarning.classList.remove('hidden');
         else cameraWarning.classList.add('hidden');
         if (window.syncReview) window.syncReview(data);
+        if (window.syncMainBrowserCamera) window.syncMainBrowserCamera(data);
       } catch (e) {
         setApiHealth(false);
         console.error("Error fetching status", e);
@@ -1042,30 +1023,12 @@
     }
 
     function onSelectSample(val) {
+      updateClipDeleteButton();
       if (!val) return;
       currentSource = val;
       const selector = document.getElementById('sample-selector');
       document.getElementById('active-source-title').textContent = selector.options[selector.selectedIndex].text;
       startStreamWithSource(val);
-    }
-
-    async function handleFileUpload(files) {
-      if (!files || files.length === 0) return;
-      const file = files[0];
-      const formData = new FormData();
-      formData.append('file', file);
-
-      document.getElementById('active-source-title').textContent = `กำลังอัปโหลด: ${file.name}...`;
-      try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('อัปโหลดไม่สำเร็จ');
-        const data = await res.json();
-        currentSource = data.path;
-        document.getElementById('active-source-title').textContent = `ไฟล์: ${file.name}`;
-        startStreamWithSource(data.path);
-      } catch (e) {
-        alert("อัปโหลดไฟล์ล้มเหลว: " + e);
-      }
     }
 
     function togglePlay() {
@@ -1097,7 +1060,9 @@
           body: JSON.stringify({ source: src, loop: false, device: document.getElementById('inference-device')?.value || 'cpu',
             model:document.getElementById('pose-model')?.value || 'yolo26n-pose.pt',
             decode_device:document.getElementById('decode-device')?.value || 'cpu',
-            review_mode:!/^\d+$/.test(src) && !/^(rtsp|https?):/.test(src),camera_id: window.activeCameraId || null })
+            review_mode:!/^\d+$/.test(src) && !/^(rtsp|https?|browser):/.test(src) && !window.clipFramePlayback,
+            frame_by_frame:!/^\d+$/.test(src) && !/^(rtsp|https?|browser):/.test(src) && !!window.clipFramePlayback,
+            playback_client:window.framePlaybackClient || null,camera_id: window.activeCameraId || null })
         });
         if (!res.ok) throw new Error((await res.json()).detail || 'เริ่มประมวลผลไม่สำเร็จ');
 
@@ -1464,11 +1429,43 @@
     }
   </script>
 
+  <div id="event-replay-modal" role="dialog" aria-modal="true" aria-labelledby="event-replay-title" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3">
+    <section class="bg-slate-900 border border-slate-700 rounded-xl p-4 w-full max-w-3xl space-y-3" style="max-height:95vh;overflow:auto">
+      <div class="flex items-center justify-between gap-3">
+        <h2 id="event-replay-title" class="font-semibold">ดูช่วงแจ้งเตือนย้อนหลัง</h2>
+        <button id="event-replay-close" onclick="closeEventReplay()" class="text-cyan-300 text-sm">ปิด / กลับไปตัวเล่นหลัก</button>
+      </div>
+      <p class="text-amber-300 text-xs">แสดงวิดีโอและผล AI ที่บันทึกไว้ตอนแจ้งเตือน ตัวเล่นหลักยังทำงานแยกจากหน้าต่างนี้</p>
+      <p id="event-replay-main-status" class="text-cyan-300 text-xs"></p>
+      <div class="relative bg-black" style="height:40vh">
+        <video id="event-replay-video" controls playsinline class="w-full h-full object-contain"></video>
+        <canvas id="event-replay-overlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+      </div>
+      <p id="event-replay-status" role="status" class="text-slate-300 text-sm"></p>
+      <a id="event-replay-download" class="hidden text-cyan-300 text-sm" download>ดาวน์โหลดวิดีโอเพื่อเปิดด้วยโปรแกรมเล่นวิดีโอ</a>
+    </section>
+  </div>
+  <div id="clip-library-list" role="dialog" aria-label="รายการคลิปที่อัปโหลด" class="hidden fixed z-40 bg-slate-900 border border-cyan-700 rounded-lg shadow-2xl overflow-y-auto p-1"></div>
+  <div id="clip-delete-modal" role="dialog" aria-modal="true" aria-labelledby="clip-delete-title" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <section class="bg-slate-900 border border-red-900 rounded-xl p-5 max-w-md w-full space-y-4">
+      <h2 id="clip-delete-title" class="font-semibold">ยืนยันลบคลิป</h2>
+      <p id="clip-delete-name" class="text-cyan-300 break-all"></p>
+      <p class="text-sm text-amber-300">ไฟล์นี้จะถูกลบถาวร วิดีโอย้อนหลังที่อ้างอิงคลิปนี้จะเปิดไม่ได้</p>
+      <div class="flex gap-3 justify-end">
+        <button id="clip-delete-cancel" onclick="cancelClipDeletion()" class="bg-slate-700 rounded px-3 py-2">ยกเลิก</button>
+        <button onclick="confirmClipDeletion()" class="bg-red-800 rounded px-3 py-2">ยืนยันลบถาวร</button>
+      </div>
+    </section>
+  </div>
   <script src="/static/face.js?v=qa-player-models-reopen-20261003"></script>
-  <script src="/static/product.js?v=qa-cctv-evidence-20261004"></script>
-  <script src="/static/violence.js?v=qa-fall-lstm-main-20261007-fall54fix1"></script>
+  <script src="/static/product.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/violence.js?v=qa-upload-delete-20261010"></script>
   <script src="/static/display.js?v=qa-display-20261004"></script>
-    <script src="/static/review.js?v=qa-event-evidence-first-pass2-20261004"></script>
-  <script src="/static/multiview.js?v=qa-player-models-reopen-20261003"></script>
+    <script src="/static/review.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/multiview.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/main-webcam.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/frame-player.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/event-replay.js?v=qa-upload-delete-20261010"></script>
+  <script src="/static/clip-library.js?v=qa-upload-delete-20261010-rows"></script>
 </body>
 </html>

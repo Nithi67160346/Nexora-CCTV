@@ -146,7 +146,7 @@ class AviCapture(CudaCapture):
         self.error_file.seek(0); self.error_file.truncate()
         command = [self.binary, '-hide_banner', '-nostdin', '-v', 'error', '-ss',
             str(frame/self.values[cv2.CAP_PROP_FPS]), '-i', self.source,
-            '-map', '0:v:0', '-an', '-sn', '-dn', '-vsync', '0', '-pix_fmt', 'bgr24',
+            '-map', '0:v:0', '-an', '-sn', '-dn', '-fps_mode', 'passthrough', '-pix_fmt', 'bgr24',
             '-f', 'rawvideo', 'pipe:1']
         self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=self.error_file,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

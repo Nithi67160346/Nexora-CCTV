@@ -1,13 +1,14 @@
 services:
   nexora:
-    image: ${NEXORA_IMAGE:-nexora-server:cpu-v0.1.0-rc.1}
+    image: ${NEXORA_QA_IMAGE:-${NEXORA_IMAGE:-nexora-qa:cpu-20261005}}
     platform: linux/amd64
     build:
       context: .
       args:
         TORCH_INDEX: https://download.pytorch.org/whl/cpu
-        WEB_REVISION: ${NEXORA_WEB_REVISION:-qa-fall-lstm-main-20261007-fall54fix1}
-        NEXORA_VERSION: v0.1.0-rc.1
+        WEB_REVISION: ${NEXORA_WEB_REVISION:-qa-upload-delete-20261010}
+        NEXORA_VERSION: v0.2.0-rc.1
+        SOURCE_FINGERPRINT: ${NEXORA_SOURCE_FINGERPRINT:-unverified}
     ports:
       - "127.0.0.1:${NEXORA_PORT:-8002}:8080"
     volumes:

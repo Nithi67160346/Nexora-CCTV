@@ -22,7 +22,7 @@ import cv2
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import numpy as np
 from pydantic import BaseModel
@@ -54,6 +54,7 @@ from web.capture import open_selected_capture, ffmpeg_binary
 from web.browser_capture import BrowserCapture
 from web.event_view import localized_event, event_category
 from web.playback import AnnotationBuffer
+from web.frame_playback import FramePlayback
 from web.media_store import MediaStore
 from web.recording_capture import RecordingCapture
 from web.multistream import StreamRegistry
@@ -100,6 +101,10 @@ SKELETON_COLORS = [
 class StreamWorker:
     def __init__(self):
         self.lock = threading.RLock()
+        self.lifecycle_lock = threading.RLock()
+        self.frame_playback = FramePlayback()
+        self.frame_by_frame = False
+        self.playback_client = None
         self.is_running = False
         self.is_paused = False
         self.generation_id = 0
@@ -278,7 +283,14 @@ class StreamWorker:
         return getattr(self.pipeline, 'modules', {}).get(name)
 
     def start_stream(self, source: str, loop: bool = True, device: Optional[str] = None, qa_run=None,
-                     decode_device='cpu', review_mode=False, browser_capture=None, model=None):
+                     decode_device='cpu', review_mode=False, browser_capture=None, model=None,
+                     frame_by_frame=False, playback_client=None):
+        with self.lifecycle_lock:
+            return self._start_stream(source, loop, device, qa_run, decode_device, review_mode, browser_capture, model,
+                                      frame_by_frame, playback_client)
+
+    def _start_stream(self, source, loop, device, qa_run, decode_device, review_mode, browser_capture, model,
+                      frame_by_frame, playback_client):
         selected = resolve_pose_weights(ROOT, model or self.weights_path.name, self.weights_path)
         if device == 'cuda' and _preferred_device() != 'cuda':
             raise ValueError('เครื่องนี้ยังใช้ GPU สำหรับ AI ไม่ได้ กรุณาเลือก CPU')
@@ -295,6 +307,11 @@ class StreamWorker:
             self.decode_device, self.review_mode = decode_device, bool(review_mode)
             self.paced_fallback = False
             self.session_id = uuid4().hex
+            self.frame_by_frame = bool(frame_by_frame)
+            self.playback_client = playback_client
+            if self.frame_by_frame:
+                self.review_mode = False
+                self.frame_playback.reset(self.session_id, playback_client)
             self.evidence_revision = uuid4().hex
             self.browser_capture = browser_capture
             self.annotations.clear()
@@ -352,6 +369,10 @@ class StreamWorker:
         self._record_updates(updates)
 
     def stop_stream(self):
+        with self.lifecycle_lock:
+            return self._stop_stream()
+
+    def _stop_stream(self):
         with self.lock:
             if self.qa_run and self.qa_run.state == 'running':
                 self.qa_run.finish(False, 'หยุดหรือเปลี่ยนแหล่งภาพก่อน QA ครบคลิป')
@@ -359,13 +380,16 @@ class StreamWorker:
             self.is_running = False
             self.pending_seek_frame = None
             self.stage = 'stopping'
+            self.frame_playback.cancel()
             if self.browser_capture: self.browser_capture.release()
             if self.capture and self.decode_device=='cuda': self.capture.release()
 
         if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=1.5)
+            # A CPU forward pass cannot be interrupted safely. Wait for it to
+            # finish without holding the processing lock or reusing its models.
+            self.thread.join(timeout=30)
             if self.thread.is_alive():
-                raise RuntimeError('Previous stream is still stopping; try again shortly')
+                raise RuntimeError('รอบก่อนยังประมวลผลเฟรมไม่เสร็จ กรุณารอแล้วเปิดคลิปอีกครั้ง')
         self.thread = None
 
         with self.lock:
@@ -404,6 +428,7 @@ class StreamWorker:
             target_frame = max(0, min(target_frame, self.total_frames - 1))
 
             self.pending_seek_frame = target_frame
+            self.frame_playback.discard()
             self.pending_seek_preserve_cache = False
             self.current_sec = target_sec
             self.current_frame_id = target_frame
@@ -526,6 +551,7 @@ class StreamWorker:
                 continue
 
             loop_start = time.monotonic()
+            frame_epoch = self.frame_playback.epoch
             ret, frame = cap.read()
             read_done = time.monotonic()
             if not valid_frame(ret, frame):
@@ -570,7 +596,7 @@ class StreamWorker:
                     continue
 
             failed_reads = 0
-            if isinstance(src, int):
+            if isinstance(src, int) or isinstance(cap, BrowserCapture):
                 if dark_frame(frame):
                     dark_since = dark_since or time.monotonic()
                 else:
@@ -619,6 +645,8 @@ class StreamWorker:
                             self.fall_diagnostics[reason]=self.fall_diagnostics.get(reason,0)+1
             except Exception as e:
                 logger.error(f"Error in frame processing: {e}")
+                if self.generation_id != gen_id:
+                    break
                 self.last_error = str(e)
                 self.detector_error = str(e)
                 updates = []
@@ -629,6 +657,8 @@ class StreamWorker:
             features_done = time.monotonic()
             # Draw AI Visualizations
             with self.lock:
+                if self.generation_id != gen_id:
+                    break
                 if self.qa_run and self.generation_id == gen_id:
                     feature_health = getattr(self.pipeline, 'health', {}).get(self.qa_run.feature, {})
                     self.qa_run.observe(frame_count, ts_ms, context, updates, self.detector_error,
@@ -640,6 +670,8 @@ class StreamWorker:
             _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             encode_done = time.monotonic()
             with self.lock:
+                if self.generation_id != gen_id:
+                    break
                 self.processing_ms = dict(read=round((read_done-loop_start)*1000,2),
                     pose=round((pose_done-read_done)*1000,2),features=round((features_done-pose_done)*1000,2),
                     render=round((render_done-features_done)*1000,2),jpeg=round((encode_done-render_done)*1000,2),
@@ -660,6 +692,10 @@ class StreamWorker:
                     for p in context.get("persons", [])
                 ]
                 self.person_filter_report = deepcopy(context.get('person_filter'))
+
+            if self.frame_by_frame and not self.is_live:
+                if not self.frame_playback.publish(self.session_id, self.latest_frame_jpeg, frame_count, ts_ms/1000, frame_epoch):
+                    break
 
             # Playback speed pacing
             elapsed = time.monotonic() - loop_start
@@ -1090,11 +1126,23 @@ class MultiStartRequest(BaseModel):
     browser_height: int = 540
 
 
+def check_server_webcam(source):
+    if source.isdigit() and Path('/.dockerenv').exists() and not Path('/dev/video'+source).exists():
+        raise HTTPException(400, 'กล้องหมายเลขนี้เป็นกล้องของ server/container และยังไม่ได้เชื่อมอุปกรณ์ '
+                            'เลือก เปิด webcam ของเครื่องนี้ หรือ ค้นหา webcam เพื่อใช้กล้องผ่านเบราว์เซอร์')
+
+
 @app.post('/api/multistream/start')
 def multi_start(req: MultiStartRequest):
+    with streams.lock:
+        return _multi_start_request(req)
+
+
+def _multi_start_request(req: MultiStartRequest):
     if req.camera_id not in worker.cameras.profiles: raise HTTPException(404,'ไม่พบห้อง / กล้อง')
     browser=None
     source=req.source
+    check_server_webcam(source)
     if source.startswith('browser://'):
         if not 64<=req.browser_width<=3840 or not 64<=req.browser_height<=2160: raise HTTPException(400,'ขนาดภาพไม่ถูกต้อง')
         browser=BrowserCapture(req.browser_width,req.browser_height)
@@ -1126,9 +1174,10 @@ def multi_stop(camera_id: str):
     return dict(status='stopped')
 
 
+@app.post('/api/stream/frame')
 @app.post('/api/multistream/{camera_id}/frame')
-async def browser_frame(camera_id: str, session_id: str = Form(...), timestamp_ms: float = Form(...),file: UploadFile = File(...)):
-    try: target=streams.get(camera_id)
+async def browser_frame(camera_id: Optional[str] = None, session_id: str = Form(...), timestamp_ms: float = Form(...),file: UploadFile = File(...)):
+    try: target=streams.get(camera_id) if camera_id else worker
     except KeyError: raise HTTPException(404,'ไม่พบกล้อง')
     if target.session_id!=session_id or not target.browser_capture: raise HTTPException(409,'กล้องเปลี่ยนแล้ว')
     if not math.isfinite(timestamp_ms) or timestamp_ms<0: raise HTTPException(400,'เวลาภาพไม่ถูกต้อง')
@@ -1141,13 +1190,14 @@ async def browser_frame(camera_id: str, session_id: str = Form(...), timestamp_m
     return dict(status='received')
 
 
+@app.post('/api/stream/recording')
 @app.post('/api/multistream/{camera_id}/recording')
-async def browser_recording(camera_id: str, session_id: str = Form(...), start_s: float = Form(...),end_s: float = Form(...),file: UploadFile = File(...)):
-    try: target=streams.get(camera_id)
+async def browser_recording(camera_id: Optional[str] = None, session_id: str = Form(...), start_s: float = Form(...),end_s: float = Form(...),file: UploadFile = File(...)):
+    try: target=streams.get(camera_id) if camera_id else worker
     except KeyError: raise HTTPException(404,'ไม่พบกล้อง')
     if target.session_id!=session_id: raise HTTPException(409,'กล้องเปลี่ยนแล้ว')
     if not math.isfinite(end_s) or end_s<=start_s or end_s-start_s>120: raise HTTPException(400,'ช่วงบันทึกไม่ถูกต้อง')
-    try: row=media_store.begin(camera_id,session_id,start_s,'.webm')
+    try: row=media_store.begin(camera_id or target.source_id,session_id,start_s,'.webm')
     except ValueError as error: raise HTTPException(409,str(error))
     path=media_store.directory/row['filename'];size=0
     try:
@@ -1180,7 +1230,7 @@ def _status_snapshot(target=None):
         "frame_ready": worker.latest_frame_jpeg is not None,
         "camera_warning": worker.camera_warning,
         "capture_backend": worker.capture_backend,
-        "webcam_revision": "webcam-selection-v1",
+        "webcam_revision": "browser-webcam-main-v3",
         "fps": round(worker.fps, 1),
         "source_fps": worker.video_fps,
         "processing_ms": deepcopy(worker.processing_ms),
@@ -1190,6 +1240,8 @@ def _status_snapshot(target=None):
         "session_id": worker.session_id,
         "evidence_revision": worker.evidence_revision,
         "review_mode": worker.review_mode,
+        "frame_by_frame": worker.frame_by_frame,
+        "playback_client": worker.playback_client,
         "paced_fallback": worker.paced_fallback,
         "analysis_sec": round(worker.current_sec,2),
         "playback_cache": worker.annotations.info(),
@@ -1259,21 +1311,40 @@ class StartStreamRequest(BaseModel):
     camera_id: Optional[str] = None
     decode_device: str = 'cpu'
     review_mode: bool = False
+    frame_by_frame: bool = False
+    playback_client: Optional[str] = None
     model: Optional[str] = None
+    browser_width: int = 960
+    browser_height: int = 540
 
 
 @app.post("/api/stream/start")
 def start_stream(req: StartStreamRequest):
+    with worker.lifecycle_lock:
+        return _start_stream_request(req)
+
+
+def _start_stream_request(req: StartStreamRequest):
     if worker.qa_run and worker.qa_run.state == 'running':
         raise HTTPException(409, 'หยุดรอบ QA ก่อนเปลี่ยนโมเดลหรือเริ่มคลิปใหม่')
+    check_server_webcam(req.source)
+    if req.frame_by_frame and (req.source.isdigit() or req.source.startswith(('browser://','rtsp://','http://','https://'))):
+        raise HTTPException(400, 'ประมวลผลทีละเฟรมใช้กับไฟล์คลิปเท่านั้น')
+    if req.frame_by_frame and (not req.playback_client or not re.fullmatch(r'[a-zA-Z0-9_-]{8,80}', req.playback_client)):
+        raise HTTPException(400, 'ต้องระบุแท็บที่เปิดคลิป')
+    browser = None
+    if req.source.startswith('browser://'):
+        if not 64 <= req.browser_width <= 3840 or not 64 <= req.browser_height <= 2160:
+            raise HTTPException(400, 'ขนาดภาพไม่ถูกต้อง')
+        browser = BrowserCapture(req.browser_width, req.browser_height)
     if req.decode_device not in ('cpu','cuda'): raise HTTPException(400,'เลือกตัวถอดรหัสเป็น CPU หรือ GPU')
-    if req.source.isdigit() and req.decode_device=='cuda': raise HTTPException(400,'webcam ใช้ระบบรับภาพกล้อง เลือก CPU decode และเลือก GPU สำหรับ AI ได้')
+    if (browser or req.source.isdigit()) and req.decode_device=='cuda': raise HTTPException(400,'webcam ใช้ระบบรับภาพกล้อง เลือก CPU decode และเลือก GPU สำหรับ AI ได้')
     if req.decode_device=='cuda' and not ffmpeg_binary(): raise HTTPException(400,'GPU decode ต้องติดตั้ง FFmpeg ก่อน')
     if streams.active(worker.source_id): raise HTTPException(409,'ห้องนี้เปิดในมุมมองหลายกล้องแล้ว')
     if req.camera_id and req.camera_id != worker.cameras.active_id:
         raise HTTPException(status_code=409, detail='เลือกโปรไฟล์กล้องนี้ก่อนเริ่มแหล่งภาพ')
     resolved = req.source
-    if not req.source.isdigit() and not req.source.startswith(("rtsp://", "http://", "https://")):
+    if not req.source.isdigit() and not req.source.startswith(("rtsp://", "http://", "https://", "browser://")):
         p = Path(req.source)
         if not p.is_file():
             cand = ROOT.parent / req.source
@@ -1283,19 +1354,30 @@ def start_stream(req: StartStreamRequest):
                 raise HTTPException(status_code=404, detail=f"Video file not found: {req.source}")
     try:
         worker.start_stream(resolved, loop=req.loop, device=req.device or _preferred_device(),
-                            decode_device=req.decode_device,review_mode=req.review_mode,model=req.model)
+                            decode_device=req.decode_device,review_mode=req.review_mode and browser is None,
+                            browser_capture=browser,model=req.model,
+                            frame_by_frame=req.frame_by_frame,playback_client=req.playback_client)
+    except RuntimeError as e:
+        if worker.stage == 'stopping':
+            raise HTTPException(409, str(e)) from e
+        worker.last_error = str(e)
+        raise HTTPException(400, f'Cannot start stream: {e}') from e
     except Exception as e:
         worker.last_error = str(e)
         raise HTTPException(status_code=400, detail=f'Cannot start stream: {e}') from e
-    return {"status": "started", "source": resolved}
+    return {"status": "started", "source": resolved, "session_id": worker.session_id,
+            "camera_id": worker.source_id}
 
 
 @app.post("/api/stream/stop")
-def stop_stream():
-    try:
-        worker.stop_stream()
-    except RuntimeError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+def stop_stream(payload: Optional[dict] = None):
+    with worker.lifecycle_lock:
+        if payload and payload.get('session_id') and payload['session_id'] != worker.session_id:
+            raise HTTPException(409, 'ตัวเล่นหลักเปลี่ยนรอบแล้ว')
+        try:
+            worker.stop_stream()
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "stopped"}
 
 
@@ -1361,6 +1443,36 @@ async def stream_feed(request: Request, camera_id: Optional[str] = None):
     return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
+@app.get('/api/playback/frame')
+def playback_frame(session_id: str, client_id: str, after: int = 0):
+    if not worker.frame_by_frame:
+        raise HTTPException(409, 'คลิปนี้ไม่ได้ใช้การเล่นตาม AI ทีละเฟรม')
+    try:
+        frame = worker.frame_playback.read(session_id, client_id, after)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    if frame is None:
+        return Response(status_code=204, headers={'Cache-Control':'no-store'})
+    return Response(frame['jpeg'], media_type='image/jpeg', headers={
+        'Cache-Control':'no-store', 'X-Frame-Sequence':str(frame['sequence']),
+        'X-Frame-Id':str(frame['frame_id']), 'X-Frame-Time':str(frame['seconds'])})
+
+
+class FrameAckRequest(BaseModel):
+    session_id: str
+    client_id: str
+    sequence: int
+
+
+@app.post('/api/playback/frame/ack')
+def playback_frame_ack(req: FrameAckRequest):
+    try:
+        worker.frame_playback.acknowledge(req.session_id, req.client_id, req.sequence)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    return {'status':'displayed'}
+
+
 @app.get("/api/events")
 def get_events(limit: int = 100, category: str = 'all', source_id: Optional[str] = None, include_last_seen: bool = False):
     with worker.lock:
@@ -1415,6 +1527,68 @@ def get_sample_videos():
     return ur_falls[:15] + ur_adls[:5]
 
 
+@app.get('/api/uploads')
+def list_uploaded_clips():
+    uploads = (SETTINGS_DIR / 'uploads').resolve()
+    if not uploads.is_dir():
+        return []
+    rows = []
+    for path in uploads.iterdir():
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in ('.mp4', '.webm', '.avi', '.mov', '.mkv'):
+            continue
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        if not info.st_size:
+            continue
+        rows.append(dict(path=str(path.resolve()), filename=re.sub(r'^[0-9a-f]{8}_', '', path.name),
+                         size=info.st_size, uploaded_at=info.st_mtime))
+    return sorted(rows, key=lambda row: (row['uploaded_at'], row['path']), reverse=True)
+
+
+class DeleteUploadedClipRequest(BaseModel):
+    source: str
+
+
+@app.delete('/api/uploads')
+def delete_uploaded_clip(req: DeleteUploadedClipRequest):
+    uploads = (SETTINGS_DIR / 'uploads').resolve()
+    try:
+        candidate = Path(req.source)
+        path = candidate.resolve()
+    except (OSError, ValueError) as error:
+        raise HTTPException(400, 'ที่อยู่คลิปไม่ถูกต้อง') from error
+    if candidate.is_symlink() or path.parent != uploads or path.suffix.lower() not in ('.mp4', '.webm', '.avi', '.mov', '.mkv'):
+        raise HTTPException(400, 'ลบได้เฉพาะคลิปในรายการอัปโหลด')
+    # Use the same lock order as primary start; registry/clip-test starts
+    # validate their file while holding their respective locks too.
+    with worker.lifecycle_lock, streams.lock, violence_clip_service.lock:
+        targets = [(worker, False)] + [(entry['worker'], entry['state'] == 'starting') for entry in streams.entries.values()]
+        for target, starting in targets:
+            source = getattr(target, 'source', '')
+            thread = getattr(target, 'thread', None)
+            active = starting or target.is_running or (thread is not None and thread.is_alive())
+            if active and source and not source.isdigit() and '://' not in source and Path(source).resolve() == path:
+                raise HTTPException(409, 'คลิปนี้ยังใช้งานอยู่ กรุณากดหยุดตัวเล่นหลักหรือมุมมองหลายกล้องก่อนลบ')
+        job = violence_clip_service.jobs.get(violence_clip_service.active, {})
+        if job.get('filename') == path.name:
+            raise HTTPException(409, 'คลิปนี้กำลังทดสอบ LSTM กรุณารอให้เสร็จก่อนลบ')
+        if not path.is_file():
+            raise HTTPException(404, 'ไม่พบคลิปนี้ อาจถูกลบแล้ว')
+        try:
+            path.unlink()
+        except OSError as error:
+            raise HTTPException(409, 'ลบไม่ได้ ไฟล์อาจยังเปิดอยู่ในโปรแกรมอื่น กรุณาปิดแล้วลองใหม่') from error
+        if worker.source and '://' not in worker.source and not worker.source.isdigit() and Path(worker.source).resolve() == path:
+            worker.source = ''
+        for profile in worker.cameras.profiles.values():
+            source = profile.get('source', '')
+            if source and '://' not in source and not source.isdigit() and Path(source).resolve() == path:
+                profile['source'] = ''
+    return dict(status='deleted', source=str(path))
+
+
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
     uploads_dir = SETTINGS_DIR / "uploads"
@@ -1423,16 +1597,18 @@ async def upload_video(file: UploadFile = File(...)):
     if Path(name).suffix.lower() not in ('.mp4','.webm','.avi','.mov','.mkv'):
         raise HTTPException(400,'รองรับไฟล์ MP4, WebM, AVI, MOV และ MKV')
     target_path = uploads_dir / f"{uuid4().hex[:8]}_{name}"
+    pending_path = target_path.with_suffix(target_path.suffix + '.part')
     size=0
     try:
-        with target_path.open('wb') as f:
+        with pending_path.open('wb') as f:
             while chunk:=await file.read(1024*1024):
                 size+=len(chunk)
                 if size>2*1024**3: raise HTTPException(413,'ไฟล์ต้องไม่เกิน 2 GB')
                 f.write(chunk)
         if not size: raise HTTPException(400,'ไฟล์วิดีโอไม่มีข้อมูล')
+        pending_path.replace(target_path)
     except Exception:
-        target_path.unlink(missing_ok=True);raise
+        pending_path.unlink(missing_ok=True);raise
     return {"status": "uploaded", "path": str(target_path.resolve()), "filename": name}
 
 
@@ -1448,6 +1624,11 @@ def violence_clip_options():
 
 @app.post('/api/violence-clip')
 def start_violence_clip(req: ViolenceClipRequest):
+    with violence_clip_service.lock:
+        return _start_violence_clip_request(req)
+
+
+def _start_violence_clip_request(req: ViolenceClipRequest):
     try:
         path = resolve_clip(req.source, [SETTINGS_DIR/'uploads', SETTINGS_DIR/'recordings',
             ROOT.parent/'incoming_cctv', ROOT/'videos'])
@@ -1636,6 +1817,11 @@ class QaRequest(BaseModel):
 
 @app.post('/api/qa/start')
 def start_qa(req: QaRequest):
+    with worker.lifecycle_lock:
+        return _start_qa_request(req)
+
+
+def _start_qa_request(req: QaRequest):
     with worker.lock:
         try:
             if req.camera_id and req.camera_id != worker.cameras.active_id:

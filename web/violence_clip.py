@@ -15,7 +15,7 @@ MODEL_NAME = 'ResNet18 + LSTM'
 FRAME_COUNT = 16
 
 
-def build_model():
+def build_model(num_layers=2):
     # All CNN parameters are in the supplied checkpoint. Never fetch ImageNet.
     import torch.nn as nn
     from torchvision import models
@@ -25,16 +25,31 @@ def build_model():
             super().__init__()
             resnet = models.resnet18(weights=None)
             self.cnn = nn.Sequential(*list(resnet.children())[:-1])
-            self.lstm = nn.LSTM(512, 256, num_layers=1, batch_first=True)
+            self.lstm = nn.LSTM(512, 256, num_layers=num_layers, batch_first=True,
+                                dropout=.3 if num_layers == 2 else 0.)
+            self.dropout = nn.Dropout(.5 if num_layers == 2 else 0.)
             self.fc = nn.Linear(256, 2)
 
         def forward(self, x):
             batch, frames, channels, height, width = x.size()
             features = self.cnn(x.reshape(batch * frames, channels, height, width))
             sequence, _ = self.lstm(features.reshape(batch, frames, -1))
-            return self.fc(sequence[:, -1, :])
+            return self.fc(self.dropout(sequence[:, -1, :]))
 
     return ResNetLSTM()
+
+
+def checkpoint_layers(state):
+    """Support the supplied v3 and legacy state dicts, always with strict load."""
+    if not isinstance(state, dict) or not all(isinstance(key, str) for key in state):
+        raise ValueError('checkpoint LSTM ต้องเป็น state_dict ของโมเดลที่รองรับ')
+    layers = 2 if 'lstm.weight_ih_l1' in state else 1
+    expected = {f'lstm.{part}_l{layer}' for layer in range(layers)
+                for part in ('weight_ih', 'weight_hh', 'bias_ih', 'bias_hh')}
+    actual = {key for key in state if key.startswith('lstm.')}
+    if actual != expected:
+        raise ValueError('โครงสร้าง LSTM ไม่ตรงกับโมเดล v3 (2 ชั้น) หรือรุ่นเดิม (1 ชั้น)')
+    return layers
 
 
 def sample_frames(path, progress=lambda stage, value: None, capture=open_capture):
@@ -155,12 +170,14 @@ class ViolenceClipService:
         path = self.weights_path()
         weight_version = (path.stat().st_size, path.stat().st_mtime_ns)
         if self.cached_model is None or self.cached_model[:2] != (device, weight_version):
-            model = build_model()
-            model.load_state_dict(torch.load(path, map_location='cpu', weights_only=True), strict=True)
+            state = torch.load(path, map_location='cpu', weights_only=True)
+            layers = checkpoint_layers(state)
+            model = build_model(layers)
+            model.load_state_dict(state, strict=True)
             model.eval().to(device)
             checksum = hashlib.sha256(path.read_bytes()).hexdigest()
-            self.cached_model = (device, weight_version, model, checksum)
-        _, _, model, checksum = self.cached_model
+            self.cached_model = (device, weight_version, model, checksum, layers)
+        _, _, model, checksum, layers = self.cached_model
         transform = transforms.Compose([transforms.ToPILImage(), transforms.Resize((224, 224)),
             transforms.ToTensor(), transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         tensor = torch.stack([transform(frame) for frame in frames]).unsqueeze(0).to(device)
@@ -171,6 +188,7 @@ class ViolenceClipService:
         return dict(fighting=probabilities[1] > 0.5,
             probability_fighting=probabilities[1], probability_normal=probabilities[0],
             threshold=0.5, weights_sha256=checksum, model=MODEL_NAME,
+            model_version='v3' if layers == 2 else 'legacy_v2', lstm_layers=layers,
             class_mapping={'0': 'normal', '1': 'fighting'})
 
 

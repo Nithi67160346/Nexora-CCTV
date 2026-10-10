@@ -28,6 +28,10 @@ const context=vm.createContext({console,performance:{now:()=>1000},setInterval()
     return {};
   }});
 vm.runInContext(code,context);
+async function openArchivedFixture(id){
+  const row=await context.productRequest('/api/events/'+id+'/playback');
+  context.openReview(row.source,row.url,row.time_s,true,null,null,row.evidence_url);
+}
 (async()=>{
   context.openReview('clip.mp4');
   await context.setSpeed(2);assert.equal(element('native-video').playbackRate,2);assert(!calls.includes('oldSpeed'));
@@ -41,7 +45,7 @@ vm.runInContext(code,context);
   context.endUiOperation();assert(element('loading-status').classList.contains('hidden'));
   startSuccess=false;calls=[];await context.startStreamWithSource('broken.mp4');
   assert(!calls.includes('/api/status'),'failed start must not open another existing stream');
-  await context.playEvent('event1');assert.equal(element('native-video').src,'/api/playback/media?source=original.mp4');
+  await openArchivedFixture('event1');assert.equal(element('native-video').src,'/api/playback/media?source=original.mp4');
   element('native-video').onloadedmetadata();assert.equal(element('native-video').currentTime,3);
   calls=[];await context.stopStream();assert(!calls.includes('oldStop'),'closing an event replay must keep live monitoring running');
   context.openReview('segment.avi','/api/recordings/id/media',0,true);element('native-video').onerror();
@@ -135,13 +139,13 @@ vm.runInContext(code,context);
   video.loop=true;video.currentTime=0;await context.refreshReviewEvidence();
   assert(!video.paused,'loop wrap must not restart the AI waiting cycle');video.loop=false;
   context.window.syncReview({is_running:true,is_live:false,review_mode:true,current_source:'cctv.mp4',session_id:'one',analysis_sec:.1,stage:'running'});
-  await context.refreshReviewEvidence();assert(!video.paused,'ongoing slow AI must not pause a playing video');
+  video.currentTime=4;await context.refreshReviewEvidence();assert(video.paused,'wait-for-AI must pause when long-clip playback overtakes actual analysis');
   assert(!calls.includes('/api/playback/analyze-near'),'overlay delay must never rerun inference automatically');
   context.productRequest=initialEvidenceRequest;video.currentTime=0;await context.setSpeed(1);
   context.togglePlay();await context.refreshReviewEvidence();assert(video.paused,'polling must preserve a manual pause');
   context.openReview('cctv.mp4',undefined,0,false,'one');video.onloadedmetadata();
   context.setWaitForAI(false);assert(!video.paused,'user can watch immediately without waiting for inference');
-  context.setWaitForAI(true);assert(!video.paused,'enabling startup wait during playback must not stop the current video');
+  context.setWaitForAI(true);assert(video.paused,'enabling wait-for-AI must wait for timestamped evidence when analysis is behind');
   await context.refreshReviewEvidence();assert(!video.paused);
   video.ended=true;video.onended();video.pause();await context.refreshReviewEvidence();
   assert(video.paused,'finished playback must not restart with loop disabled');video.ended=false;
@@ -186,7 +190,7 @@ vm.runInContext(code,context);
   context.productRequest=async url=>{calls.push(url);return url.endsWith('/playback')?
     {source:'event.mp4',url:'/api/playback/media?source=event.mp4',time_s:2,evidence_url:'/api/events/event2/annotations'}:
     {event_id:'event2',frames:[{time_s:2,persons:[{track_id:1,bbox_xyxy:[1,1,40,50],pose,alert:true}]}]};};
-  calls=[];await context.playEvent('event2');video.onloadedmetadata();await context.refreshReviewEvidence();
+  calls=[];await openArchivedFixture('event2');video.onloadedmetadata();await context.refreshReviewEvidence();
   assert(!element('ai-playback-overlay').classList.contains('hidden'),'event replay must show original timestamped overlays');
   assert.equal(context.matchingReviewRow().persons[0].alert,true);
   assert(calls.includes('/api/events/event2/annotations?seconds=2'));
@@ -198,6 +202,14 @@ vm.runInContext(code,context);
   await context.seekReview(2.2);
   finishBeforeSeek({event_id:'event2',frames:[{time_s:2,persons:[]}]});await beforeSeek;
   assert.equal(context.matchingReviewRow().time_s,2.2,'pre-seek reply cannot clear the new overlay');
+  await context.stopStream();
+  video.duration=120;context.openReview('long.mp4',undefined,0,false,'long-run');video.onloadedmetadata();
+  context.productRequest=async()=>({source:'long.mp4',session_id:'long-run',analysis_sec:.5,frames:[{time_s:.033,persons:[]},{time_s:.5,persons:[]}]});
+  await context.refreshReviewEvidence();assert(!video.paused);
+  video.currentTime=.48;context.paintReview();assert(video.paused,'render loop must stop playback at the analysis watermark before the next network poll');
+  context.productRequest=async()=>({source:'long.mp4',session_id:'long-run',analysis_sec:1.2,frames:[{time_s:.48,persons:[]},{time_s:.9,persons:[]}]});
+  await context.refreshReviewEvidence();assert(!video.paused,'long clips must resume when the next analysed section is ready');
+  context.togglePlay();await context.refreshReviewEvidence();assert(video.paused,'AI buffering must preserve manual pause');
   await context.stopStream();
   console.log('PASS: native 2x, paused scrub, loading race, failed start, event replay source, codec fallback and timestamped red evidence');
 })().catch(error=>{console.error(error);process.exitCode=1;});

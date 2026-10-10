@@ -2,13 +2,21 @@
 
 ชุดสำหรับนำเว็บ NEXORA ไปติดตั้งบน server: ตัวเล่นหลักใช้ YOLO Pose ร่วมกับ Fall RandomForest 54 features และโมเดลภาพ ResNet18 + LSTM สำหรับการทำร้ายร่างกาย รวม Location, โซนเตียง, Wandering และใบหน้า
 
-รุ่น `v0.1.0-rc.1` · เว็บ `qa-fall-lstm-main-20261007-fall54fix1` · สถานะทดลอง
+รุ่น `v0.2.0-rc.1` · เว็บ `qa-upload-delete-20261010` · สถานะทดลอง
+
+รุ่นนี้เพิ่มเว็บแคมผ่าน browser พร้อมค้นหากล้อง, ประมวลผลคลิปตามเฟรมที่แสดง, ดูหลักฐานแจ้งเตือนแยกจากตัวเล่นหลัก, อัปโหลดหลายคลิปและลบคลิปจากรายการ พร้อมโมเดลการทำร้ายร่างกาย ResNet18 + LSTM v3
+
+## ชุดพร้อมรันสำหรับ QA บน Windows
+
+ดาวน์โหลด `NEXORA-QA-Ready-20261011.zip` และไฟล์ image `.part001`, `.part002`, `.part003` ให้ครบจาก [Release ล่าสุด](https://github.com/Nithi67160346/Nexora-CCTV/releases/tag/v0.2.0-rc.1) วางทั้งสี่ไฟล์ในโฟลเดอร์เดียวกันแล้วแตก ZIP ตรงนั้น เปิด Docker Desktop รอ Engine running แล้วดับเบิลคลิก `start_docker.cmd` ในโฟลเดอร์ที่แตก ตัวรันตรวจ checksum รวม image และนำเข้าเองครั้งแรก ไม่ต้อง build หรือเปิด PowerShell
+
+ใช้ Windows Intel/AMD x64 กับ Docker Desktop แบบ Linux containers / WSL2 และเผื่อพื้นที่อย่างน้อย 35 GB หาก NVIDIA และ Docker CUDA พร้อมจะเลือก GPU อัตโนมัติ ไม่พร้อมใช้ CPU หยุดด้วย `stop_docker.cmd` ข้อมูลและรีวิวยังคงอยู่ ชุดนี้ไม่ได้ทดสอบ Windows ARM หรือ Mac
 
 ## ติดตั้ง
 
 1. ติดตั้ง Docker Engine / Docker Desktop ที่ใช้ Linux containers และ Docker Compose v2
-2. ดาวน์โหลด **NEXORA-Server-v0.1.0-rc.1.zip** และไฟล์ `.sha256` จาก [Release](https://github.com/Nithi67160346/Nexora-CCTV/releases/tag/v0.1.0-rc.1) แล้วตรวจ checksum ก่อนแตกไฟล์ ZIP นี้มีโค้ดและโมเดลพร้อมตำแหน่งที่ต้องใช้ แต่ยังไม่มี Docker image ที่ build แล้ว
-3. เปิด terminal ในโฟลเดอร์ที่แตกไฟล์ แล้วทำตาม [คู่มือติดตั้ง server](deploy/README_TH.md)
+2. ใช้โค้ด `main` และดาวน์โหลด QA ZIP จาก Release ล่าสุดเพื่อรับโมเดล (server ไม่จำเป็นต้องดาวน์โหลด image parts ถ้าจะ build เอง)
+3. ติดตั้งโมเดลตามคำสั่งด้านล่าง แล้วทำตาม [คู่มือติดตั้ง server](deploy/README_TH.md)
 
 ถ้าใช้ `git clone` โค้ดจะไม่มีไฟล์โมเดล ให้ดาวน์โหลดและแตก Release เช่นกัน แล้วคัดลอกเฉพาะโมเดลด้วย Python 3.10+:
 
@@ -37,4 +45,4 @@ Healthy หมายถึงระบบและ detector พร้อม ไ�
 
 ใช้ scikit-learn **1.9.1** สำหรับ RF 54 features ตาม lock เดิม ไฟล์ AI1/scaler เก่าที่แนบใน bundle มีไว้รักษาชุดต้นฉบับและไม่ได้ deserialize โมเดล LSTM และ Fall ไม่ได้ถูกเทรนใหม่ใน Release นี้
 
-ประวัติของ repo นี้เริ่มจาก snapshot สำหรับ server ไม่มีประวัติ Git ของ repo พัฒนาและไม่มีเอกสาร presentation / tech review ส่วน runtime AI ใช้ชุดล่าสุดเดิม ดู [การตรวจชุด deploy](deploy/VALIDATION_TH.md)
+ดู [การตรวจชุด deploy](deploy/VALIDATION_TH.md) และ [Release ก่อนหน้า](https://github.com/Nithi67160346/Nexora-CCTV/releases/tag/v0.1.0-rc.1) หากต้องย้อนเวอร์ชัน โค้ดก่อนอัปเดตเก็บไว้ใน tag `backup/main-before-20261011` ด้วย

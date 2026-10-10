@@ -1,5 +1,5 @@
 {
-  "runtime_revision": "qa-fall-lstm-main-20261007-fall54fix1",
+  "runtime_revision": "qa-upload-delete-20261010",
   "sklearn_version": "1.9.1",
   "files": [
     {
@@ -40,27 +40,27 @@
     },
     {
       "path": "best_lstm_model.pth",
-      "bytes": 47941667,
-      "sha256": "282ad258fe83bbe975ca90f6228cd51b05e2f97b934e698ff61a7cc3319245fb",
+      "bytes": 50048251,
+      "sha256": "1f425aca933bc41e561a55808d8c5555fad2d14575838d44b5d34fb30a0d476a",
       "required": true
     },
     {
       "path": "Fall/models_yolo/ai1_isolation_forest_yolo.pkl",
       "bytes": 2612153,
       "sha256": "f3a3066eda0e25bc60b1864fae376be73323a66c749e623186ea822a1ef0f524",
-      "required": true
+      "required": false
     },
     {
       "path": "Fall/models_yolo/ai1_scaler_yolo.pkl",
       "bytes": 2607,
       "sha256": "bcf188a772080cbc0594b6ec1959cac79c7d6634693b8f17d0d4cb92e741e709",
-      "required": true
+      "required": false
     },
     {
       "path": "Fall/models_yolo/ai1_threshold_yolo.pkl",
       "bytes": 117,
       "sha256": "0b6d944963638eea44c26fb3ee50c17eac2e9b5d7105e71a100088dc336c85ca",
-      "required": true
+      "required": false
     },
     {
       "path": "Fall/models_yolo/ai2_fall_detector_yolo.pkl",

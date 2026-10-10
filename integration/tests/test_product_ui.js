@@ -46,15 +46,15 @@ for (const profile of cameraData.profiles) profile.config={features:{location:{c
   a.ctx.updatePriorityAlert([]);assert.equal(a.element('priority-playback-button').onclick,null);
   a.ctx.updateProductStatus({health:{capture:{state:'paused'},detector:{state:'ready'},features:{fall:{state:'no_observation'}}}});
   assert.equal(a.element('health-fall').textContent,'ไม่มีคนให้ประเมิน');
-  a.ctx.updateProductStatus({product_revision:'qa-fall-lstm-main-20261007-fall54fix1',is_running:true,current_source:'uploads/current.mp4',
+  a.ctx.updateProductStatus({product_revision:'qa-upload-delete-20261010',is_running:true,current_source:'uploads/current.mp4',
     interaction_diagnostics:{model_kind:'resnet18_lstm',result:{window_start_ms:2000,window_end_ms:3900,probability_fighting:.998,fighting:true}}});
   assert.match(a.element('main-violence-result').textContent,/current.mp4/);
   assert.match(a.element('main-violence-result').textContent,/2.0–3.9s/);
   assert.match(a.element('main-violence-result').textContent,/99.8%/);
-  a.ctx.updateProductStatus({product_revision:'qa-fall-lstm-main-20261007-fall54fix1',is_running:false});
+  a.ctx.updateProductStatus({product_revision:'qa-upload-delete-20261010',is_running:false});
   assert.equal(a.element('main-violence-result').textContent,'','closing/switching the source must remove the previous scene score');
   a.ctx.updateProductStatus({is_running:true});
-  assert.match(a.element('main-violence-result').textContent,/เซิร์ฟเวอร์เก่า/,'old native/Docker servers must not masquerade as the new main web');
+  assert.match(a.element('main-violence-result').textContent,/คนละรุ่น/,'different native/Docker revisions must not masquerade as the current main web');
   a.ctx.updateProductStatus({fall_backend:'yolo_pose_rf_v2',fall_model:{ml_loaded:true},fall_statuses:{7:{phase:'FALL_DETECTED',fall_score:.8}}});
   assert.match(a.element('main-fall-result').textContent,/คน #7/);
   assert.match(a.element('main-fall-result').textContent,/80.0%/);

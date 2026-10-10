@@ -13,7 +13,9 @@ docker compose -p nexora-server config --quiet
 
 บน Windows ใช้ `python` แทน `python3` และ Docker Desktop Linux Engine ต้อง running คำสั่งตรวจโมเดลไม่ต้องมี Torch หรือ scikit-learn
 
-ไฟล์บังคับคือ `models/yolo26n-pose.pt`, `best_lstm_model.pth` และ PKL ทั้งห้าใน `Fall/models_yolo/` ซึ่งมีครบใน Release ตัวเลือก pose อื่นและโมเดลใบหน้าก็แนบไว้ และตรวจ checksum ได้ด้วย `--check` โฟลเดอร์วิดีโอ `videos/` จะถูกสร้างเมื่อเริ่ม Compose; สามารถอัปโหลดคลิปผ่านเว็บโดยไม่วางคลิปใน Git
+ใช้โมเดลจาก QA ZIP ของ Release `v0.2.0-rc.1` และติดตั้งด้วย `scripts/install_models.py --from-dir /path/to/extracted-qa-folder` ไฟล์บังคับคือ `models/yolo26n-pose.pt`, `best_lstm_model.pth`, `Fall/models_yolo/ai2_fall_detector_yolo.pkl` และ `feature_names_yolo.pkl` รุ่นนี้ไม่ deserialize AI1 เก่า ตัวเลือก pose อื่นและโมเดลใบหน้าก็แนบไว้ และตรวจ checksum ได้ด้วย `--check` โฟลเดอร์วิดีโอ `videos/` จะถูกสร้างเมื่อเริ่ม Compose; สามารถอัปโหลดคลิปผ่านเว็บโดยไม่วางคลิปใน Git
+
+เว็บแคมใช้กล้องของเครื่องที่เปิด browser ผ่าน localhost/SSH tunnel หรือ HTTPS และต้องอนุญาตกล้องใน browser ไม่เปิดกล้องหมายเลข 0/1 ภายใน container
 
 ## CPU
 

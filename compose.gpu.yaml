@@ -1,6 +1,6 @@
 services:
   nexora:
-    image: ${NEXORA_GPU_IMAGE:-nexora-server:gpu-v0.1.0-rc.1}
+    image: ${NEXORA_QA_IMAGE:-${NEXORA_GPU_IMAGE:-nexora-qa:gpu-20261005}}
     build:
       args:
         TORCH_INDEX: https://download.pytorch.org/whl/cu128
