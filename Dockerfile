@@ -36,7 +36,7 @@ COPY --from=assets /build/output ./web/static/vendor
 RUN mkdir -p /app/local_only /app/models /incoming_cctv
 ARG WEB_REVISION=qa-upload-delete-20261010
 ARG SOURCE_FINGERPRINT=unverified
-ARG NEXORA_VERSION=v0.2.0-rc.1
+ARG NEXORA_VERSION=v0.2.0-rc.2
 LABEL org.opencontainers.image.title="NEXORA" org.opencontainers.image.version="${NEXORA_VERSION}" nexora.web.revision="${WEB_REVISION}"
 LABEL nexora.source.fingerprint="${SOURCE_FINGERPRINT}"
 EXPOSE 8080

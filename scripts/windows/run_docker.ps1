@@ -70,7 +70,9 @@ function Join-QaReadyArchive {
         }
         $seen[$part.name] = $true
         $found = $null
-        foreach ($folder in @((Join-Path $projectRoot 'docker_images'), $projectRoot, (Split-Path -Parent $projectRoot))) {
+        # Windows Extract All adds an outer folder around the ZIP's own folder.
+        $parentFolder = Split-Path -Parent $projectRoot
+        foreach ($folder in @((Join-Path $projectRoot 'docker_images'), $projectRoot, $parentFolder, (Split-Path -Parent $parentFolder))) {
             $candidate = Join-Path $folder $part.name
             if (Test-Path -LiteralPath $candidate -PathType Leaf) { $found = $candidate; break }
         }

@@ -212,7 +212,8 @@ class DockerLauncherTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='NEXORA QA ')
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name) / 'Extracted' / 'NEXORA QA'
+        self.root.mkdir(parents=True)
         self.script = self.root / 'scripts/windows/run_docker.ps1'
         self.script.parent.mkdir(parents=True)
         shutil.copyfile(ROOT / 'scripts/windows/run_docker.ps1', self.script)
@@ -585,6 +586,15 @@ class DockerLauncherTests(unittest.TestCase):
         self.assertTrue(all(p.exists() for p in parts))
         self.assertTrue(any(c[0] == 'load' for c in calls))
         self.assertFalse(any('build' in c or c[0] == 'pull' for c in calls))
+
+    def test_windows_extract_all_finds_parts_beside_original_zip(self):
+        archive, parts = self.prepare_split_bundle()
+        for part in parts:
+            part.replace(self.root.parent.parent / part.name)
+        result, calls = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(archive.read_bytes(), b'prebuilt QA image')
+        self.assertTrue(any(c[0] == 'load' for c in calls))
 
     def test_corrupt_or_missing_split_image_never_loads_or_starts(self):
         for missing in (False, True):

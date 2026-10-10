@@ -1,6 +1,6 @@
 # เปิด NEXORA สำหรับ QA
 
-ดาวน์โหลด QA ZIP และ image parts ทั้งสามจาก Release v0.2.0-rc.1 วางไฟล์ทั้งหมดในโฟลเดอร์เดียวกัน แล้วแตก ZIP ตรงนั้น
+ดาวน์โหลด QA ZIP และ image parts ทั้งสามจาก Release v0.2.0-rc.2 วางไฟล์ทั้งหมดในโฟลเดอร์เดียวกัน แล้วแตก ZIP ตรงนั้น
 
 ใช้ Windows Intel/AMD x64 ติดตั้ง Docker Desktop แบบ Linux containers / WSL2 เปิด Docker รอ Engine running แล้วดับเบิลคลิก start_docker.cmd ในโฟลเดอร์ที่แตก
 

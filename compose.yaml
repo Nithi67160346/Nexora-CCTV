@@ -7,7 +7,7 @@ services:
       args:
         TORCH_INDEX: https://download.pytorch.org/whl/cpu
         WEB_REVISION: ${NEXORA_WEB_REVISION:-qa-upload-delete-20261010}
-        NEXORA_VERSION: v0.2.0-rc.1
+        NEXORA_VERSION: v0.2.0-rc.2
         SOURCE_FINGERPRINT: ${NEXORA_SOURCE_FINGERPRINT:-unverified}
     ports:
       - "127.0.0.1:${NEXORA_PORT:-8002}:8080"

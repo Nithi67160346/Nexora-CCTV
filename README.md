@@ -2,13 +2,13 @@
 
 ชุดสำหรับนำเว็บ NEXORA ไปติดตั้งบน server: ตัวเล่นหลักใช้ YOLO Pose ร่วมกับ Fall RandomForest 54 features และโมเดลภาพ ResNet18 + LSTM สำหรับการทำร้ายร่างกาย รวม Location, โซนเตียง, Wandering และใบหน้า
 
-รุ่น `v0.2.0-rc.1` · เว็บ `qa-upload-delete-20261010` · สถานะทดลอง
+รุ่น `v0.2.0-rc.2` · เว็บ `qa-upload-delete-20261010` · สถานะทดลอง
 
 รุ่นนี้เพิ่มเว็บแคมผ่าน browser พร้อมค้นหากล้อง, ประมวลผลคลิปตามเฟรมที่แสดง, ดูหลักฐานแจ้งเตือนแยกจากตัวเล่นหลัก, อัปโหลดหลายคลิปและลบคลิปจากรายการ พร้อมโมเดลการทำร้ายร่างกาย ResNet18 + LSTM v3
 
 ## ชุดพร้อมรันสำหรับ QA บน Windows
 
-ดาวน์โหลด `NEXORA-QA-Ready-20261011.zip` และไฟล์ image `.part001`, `.part002`, `.part003` ให้ครบจาก [Release ล่าสุด](https://github.com/Nithi67160346/Nexora-CCTV/releases/tag/v0.2.0-rc.1) วางทั้งสี่ไฟล์ในโฟลเดอร์เดียวกันแล้วแตก ZIP ตรงนั้น เปิด Docker Desktop รอ Engine running แล้วดับเบิลคลิก `start_docker.cmd` ในโฟลเดอร์ที่แตก ตัวรันตรวจ checksum รวม image และนำเข้าเองครั้งแรก ไม่ต้อง build หรือเปิด PowerShell
+ดาวน์โหลด `NEXORA-QA-Ready-20261011.zip` และไฟล์ image `.part001`, `.part002`, `.part003` ให้ครบจาก [Release ล่าสุด](https://github.com/Nithi67160346/Nexora-CCTV/releases/tag/v0.2.0-rc.2) วางทั้งสี่ไฟล์ในโฟลเดอร์เดียวกันแล้วแตก ZIP ตรงนั้น เปิด Docker Desktop รอ Engine running แล้วดับเบิลคลิก `start_docker.cmd` ในโฟลเดอร์ที่แตก ตัวรันตรวจ checksum รวม image และนำเข้าเองครั้งแรก ไม่ต้อง build หรือเปิด PowerShell
 
 ใช้ Windows Intel/AMD x64 กับ Docker Desktop แบบ Linux containers / WSL2 และเผื่อพื้นที่อย่างน้อย 35 GB หาก NVIDIA และ Docker CUDA พร้อมจะเลือก GPU อัตโนมัติ ไม่พร้อมใช้ CPU หยุดด้วย `stop_docker.cmd` ข้อมูลและรีวิวยังคงอยู่ ชุดนี้ไม่ได้ทดสอบ Windows ARM หรือ Mac
 

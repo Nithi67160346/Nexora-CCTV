@@ -1,6 +1,6 @@
 # การตรวจชุดสำหรับ QA / server — 11 ตุลาคม 2026
 
-- ตัวรัน Docker: 62 tests ผ่าน รวม CPU/GPU อัตโนมัติ, ready image, รวม image parts, checksum ผิด, ไฟล์ขาด และไม่ build/import เมื่อใช้ CheckOnly / NoBuild
+- ตัวรัน Docker: 63 tests ผ่าน รวม CPU/GPU อัตโนมัติ, ready image, รวม image parts รวมการแตกด้วย Windows Extract All, checksum ผิด, ไฟล์ขาด และไม่ build/import เมื่อใช้ CheckOnly / NoBuild
 - เว็บชุดใหม่: 62 tests ผ่าน ครอบคลุม webcam, วงจรเริ่ม/หยุด, frame playback, upload/delete, LSTM v3 และตัวเล่นหลัก
 - ติดตั้งโมเดล: 5 tests ผ่าน ตรวจ checksum และป้องกัน path escape / เขียนทับ
 - UI: 8 Node suites ผ่าน ได้แก่ browser camera, clip library, event replay, frame player, main webcam, product, review และ feature toggle
