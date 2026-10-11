@@ -61,6 +61,7 @@ from web.multistream import StreamRegistry
 from web.model_catalog import POSE_MODELS, resolve_pose_weights, model_options
 from web.face_service import FaceService
 from web.face_overlay import draw_person_label
+from web.feature_settings import FeatureSettings
 from web.camera_profiles import CameraProfiles, apply_zones, clean_text
 from web.runtime_health import snapshot as health_snapshot
 from web.qa_service import QaRun, EVENT_FEATURES
@@ -99,7 +100,7 @@ SKELETON_COLORS = [
 
 
 class StreamWorker:
-    def __init__(self):
+    def __init__(self, persist_features=False):
         self.lock = threading.RLock()
         self.lifecycle_lock = threading.RLock()
         self.frame_playback = FramePlayback()
@@ -173,7 +174,8 @@ class StreamWorker:
         self.core: Optional[SharedYoloCore] = None
         self.pipeline: Optional[ProgressPipeline] = None
         self.face_service = FaceService(ROOT)
-        self.config = self._product_config(load_config(ROOT / "integration/progress.yaml"))
+        self.feature_settings = FeatureSettings(SETTINGS_DIR/"feature_toggles.json" if persist_features else None)
+        self.config = self._product_config(self.feature_settings.load(load_config(ROOT / "integration/progress.yaml")))
         self.cameras = CameraProfiles(self.config)
 
         # Respect the shared configuration, including Fall disabled by default.
@@ -219,7 +221,7 @@ class StreamWorker:
         self.cameras.save_active(self.config)
         logger.info(f"ProgressPipeline initialized with modules: {list(self.pipeline.modules.keys())}")
 
-    def update_config(self, new_config: dict, camera_id=None, preserve_qa=False):
+    def update_config(self, new_config: dict, camera_id=None, preserve_qa=False, persist_features=False):
         with self.lock:
             candidate = self._product_config(new_config, camera_id)
             replacement = ProgressPipeline.from_config(candidate)
@@ -230,6 +232,8 @@ class StreamWorker:
                     raise ValueError('โมเดลใบหน้าเปิดไม่สำเร็จ การตั้งค่าเดิมยังคงอยู่')
             if self.pipeline:
                 self._record_updates(self.pipeline.flush())
+            if persist_features:
+                self.feature_settings.save(candidate)
             if not preserve_qa and self.qa_run and self.qa_run.state == 'running':
                 self.qa_run.finish(False, 'การตั้งค่าหรือโมเดลเปลี่ยนระหว่าง QA')
             self.config, self.pipeline = candidate, replacement
@@ -869,7 +873,7 @@ class StreamWorker:
 
 
 # Global worker instance
-worker = StreamWorker()
+worker = StreamWorker(persist_features=True)
 streams = StreamRegistry(StreamWorker,worker)
 
 # FastAPI Application
@@ -1711,7 +1715,7 @@ def toggle_features(features_payload: dict):
                 raise HTTPException(status_code=400, detail='Expected known feature names and boolean states')
             candidate['features'][feat]['enabled'] = state
         try:
-            worker.update_config(candidate)
+            worker.update_config(candidate, persist_features=True)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f'Configuration rejected: {e}') from e
     return {"status": "features_updated", "enabled_features": list(worker.pipeline.modules.keys()) if worker.pipeline else []}
