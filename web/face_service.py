@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from Location.location.face.face_database import NpzFaceDatabase
-from Location.location.face.face_detector import create_face_detector, crop_face
+from Location.location.face.face_detector import FaceDetection, create_face_detector, crop_face
 from Location.location.face.face_embedder import create_face_embedder
 from Location.location.face.face_quality import FaceQualityChecker
 
@@ -20,6 +20,37 @@ from Location.location.face.face_quality import FaceQualityChecker
 class FaceService:
     MODES = ('off', 'detect', 'recognize')
     MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+    @staticmethod
+    def _enrollment_faces(detector, image):
+        # YuNet can miss large faces in full-resolution phone photos. Detect at
+        # bounded scales, then restore coordinates for quality/alignment on the original.
+        h, w = image.shape[:2]
+        previous_size = None
+        for longest_side in (640, 320):
+            scale = min(1.0, longest_side / max(w, h))
+            size = (max(1, round(w * scale)), max(1, round(h * scale)))
+            if size == previous_size:
+                continue
+            previous_size = size
+            view = image if size == (w, h) else cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+            faces = detector.detect_in_person(view, (0, 0, *size))
+            if not faces:
+                continue
+            sx, sy = w / size[0], h / size[1]
+            restored = []
+            for face in faces:
+                x1, y1, x2, y2 = face.bbox
+                landmarks = None
+                if face.landmarks is not None:
+                    landmarks = np.array(face.landmarks, dtype=np.float32).copy()
+                    landmarks[:14:2] *= sx
+                    landmarks[1:14:2] *= sy
+                restored.append(FaceDetection((x1 * sx, y1 * sy, x2 * sx, y2 * sy),
+                                              face.conf, landmarks))
+            # Return every detected face; never bypass the single-face rule.
+            return restored
+        return []
 
     def __init__(self, root):
         self.root = Path(root)
@@ -152,8 +183,7 @@ class FaceService:
             if digest in seen:
                 rejected.append(dict(image=i, reason='รูปซ้ำ')); continue
             seen.add(digest)
-            h, w = image.shape[:2]
-            faces = detector.detect_in_person(image, (0, 0, w, h))
+            faces = self._enrollment_faces(detector, image)
             if len(faces) != 1:
                 rejected.append(dict(image=i, reason=f'พบ {len(faces)} หน้า ต้องมีหนึ่งหน้า')); continue
             if not quality.check(crop_face(image, faces[0].bbox), faces[0].conf).ok:

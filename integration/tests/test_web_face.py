@@ -79,6 +79,33 @@ class WebFaceTests(unittest.TestCase):
                 self.service.prepare_enrollment('A', 'resident', '', True, [image] * 3)
         self.assertFalse(self.service.path.exists())
 
+    def test_large_enrollment_photo_restores_bbox_and_alignment_coordinates(self):
+        calls = []
+        row = np.array([10, 20, 30, 40, 15, 25, 25, 25, 20, 35, 15, 45, 25, 45, .95], np.float32)
+        def detect(frame, box):
+            calls.append((frame.shape, box))
+            return [FaceDetection((10, 20, 40, 60), .95, row)]
+        detector = SimpleNamespace(detect_in_person=detect)
+        image = np.zeros((1201, 2048, 3), np.uint8)
+        face = self.service._enrollment_faces(detector, image)[0]
+        self.assertEqual(calls, [((375, 640, 3), (0, 0, 640, 375))])
+        np.testing.assert_allclose(face.bbox, [32, 20 * 1201 / 375, 128, 60 * 1201 / 375])
+        expected = row.copy(); expected[:14:2] *= 2048 / 640; expected[1:14:2] *= 1201 / 375
+        np.testing.assert_allclose(face.landmarks, expected)
+        self.assertEqual(face.conf, .95)
+        np.testing.assert_array_equal(row, [10, 20, 30, 40, 15, 25, 25, 25, 20, 35, 15, 45, 25, 45, np.float32(.95)])
+
+    def test_enrollment_scale_fallback_preserves_multiple_faces(self):
+        calls = []
+        def detect(frame, box):
+            calls.append(frame.shape)
+            return [] if frame.shape[1] == 640 else [FaceDetection((0, 0, 40, 40), .99)] * 2
+        faces = self.service._enrollment_faces(SimpleNamespace(detect_in_person=detect),
+                                               np.zeros((1024, 2048, 3), np.uint8))
+        self.assertEqual(calls, [(320, 640, 3), (160, 320, 3)])
+        self.assertEqual(len(faces), 2)
+        self.assertEqual(faces[0].bbox, (0, 0, 256, 256))
+
     def test_multi_face_photos_cannot_register_a_mixed_identity(self):
         detector, embedder = self.mocks()
         detector.detect_in_person = lambda frame, box: [FaceDetection((0, 0, 40, 40), .99)] * 2
