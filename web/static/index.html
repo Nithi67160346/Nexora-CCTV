@@ -485,6 +485,10 @@
           </div>
         </div>
 
+        <div id="event-delete-notice" class="hidden mt-2 text-xs text-slate-300" role="status">
+          ลบเหตุการณ์แล้ว <button id="event-delete-undo" type="button" onclick="undoDeleteEvent(this)" class="ml-2 text-cyan-300 underline">เลิกทำ</button>
+        </div>
+
         <!-- Event Cards Scroll Container -->
         <div id="events-container" class="flex-1 overflow-y-auto space-y-3 mt-3 pr-1 custom-scroll max-h-[600px]">
           <div class="text-center py-12 text-slate-500 text-xs">
@@ -858,7 +862,7 @@
         const res = await fetch('/api/events?limit=500&category=all&include_last_seen='+includeLast, { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const events = await res.json();
-        lastEvents = Array.isArray(events) ? events : [];
+        lastEvents = Array.isArray(events) ? events.filter(e=>!window.eventDeletedLocally?.(e.event_id)) : [];
         updatePriorityAlert(window.eventCategoryVisible?lastEvents.filter(window.eventCategoryVisible):lastEvents);
         renderEvents(lastEvents);
       } catch (e) {
@@ -893,6 +897,7 @@
     function renderEvents(events) {
       const container = document.getElementById('events-container');
       const filtered = events.filter(e => {
+        if(window.eventDeletedLocally?.(e.event_id))return false;
         if (window.eventCategoryVisible && !window.eventCategoryVisible(e)) return false;
         if (eventFilter === 'pending' && e.review_status !== 'needs_review') return false;
         if (eventFilter === 'critical' && !(
@@ -983,6 +988,7 @@
             </div>
 
             <button data-event-id="${escapeHtml(e.event_id)}" onclick="playEvent(this.dataset.eventId)" class="mt-2 px-3 py-1 rounded bg-cyan-800 text-cyan-100">ย้อนดูช่วงแจ้งเตือน</button>
+            <button type="button" data-event-id="${escapeHtml(e.event_id)}" onclick="deleteEvent(this.dataset.eventId,this)" class="mt-2 ml-2 px-3 py-1 rounded bg-red-900/40 text-red-300 hover:bg-red-900/70" aria-label="ลบเหตุการณ์"><i class="fa-solid fa-trash-can"></i> ลบเหตุการณ์</button>
             ${reviewUI}
           </div>
         `;
@@ -1466,6 +1472,7 @@
   <script src="/static/main-webcam.js?v=qa-upload-delete-20261010"></script>
   <script src="/static/frame-player.js?v=qa-upload-delete-20261010"></script>
   <script src="/static/event-replay.js?v=replay-coordinates-20261012"></script>
+  <script src="/static/event-actions.js?v=event-delete-20261012"></script>
   <script src="/static/clip-library.js?v=qa-upload-delete-20261010-rows"></script>
 </body>
 </html>

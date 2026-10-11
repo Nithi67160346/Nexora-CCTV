@@ -175,6 +175,39 @@ class FeedbackApiTests(unittest.TestCase):
             self.assertIn('ล้ม',response.json()[0]['message'])
             self.assertEqual(len(self.client.get('/api/events?include_last_seen=true').json()),2)
             self.assertEqual(self.client.get('/api/events?category=location').json(),[])
+    def test_delete_and_restore_event_update_list_stats_and_preserve_media(self):
+        with tempfile.TemporaryDirectory() as folder:
+            clip=Path(folder)/'original.mp4';clip.write_bytes(b'original video')
+            events=[dict(event_id='one',source_id='cam',event_type='fall_detected',metadata={'playback_source':str(clip)},
+                         review_status='confirmed',human_verdict='confirmed'),
+                    dict(event_id='two',source_id='cam',event_type='fall_detected',metadata={},review_status='needs_review')]
+            with patch.object(server.worker,'events',events),patch.object(server.worker,'review_stats',{}):
+                self.assertEqual(self.client.delete('/api/events/one').status_code,200)
+                deleted_at=events[0]['deleted_at']
+                self.assertEqual(self.client.delete('/api/events/one').status_code,200)
+                self.assertEqual(events[0]['deleted_at'],deleted_at)
+                self.assertEqual([e['event_id'] for e in self.client.get('/api/events').json()],['two'])
+                self.assertEqual(server.worker.review_stats['total'],1)
+                self.assertEqual(server.worker.review_stats['confirmed'],0)
+                self.assertEqual(self.client.get('/api/events/one/playback').status_code,404)
+                self.assertEqual(self.client.get('/api/events/one/annotations?seconds=0').status_code,404)
+                self.assertEqual(self.client.post('/api/events/one/review',json={'verdict':'false_alarm'}).status_code,404)
+                self.assertEqual(clip.read_bytes(),b'original video')
+                from unittest.mock import Mock
+                with patch.object(server.worker.telegram,'record',Mock()) as record:
+                    server.worker._record_updates([dict(events[0],confidence=.9)])
+                    record.assert_not_called()
+                self.assertEqual(events[0]['human_verdict'],'confirmed')
+                self.assertEqual(self.client.post('/api/events/one/restore').status_code,200)
+                self.assertEqual(len(self.client.get('/api/events').json()),2)
+                self.assertEqual(server.worker.review_stats['confirmed'],1)
+                self.assertEqual(events[0]['human_verdict'],'confirmed')
+                self.assertEqual(clip.read_bytes(),b'original video')
+    def test_delete_and_restore_missing_event_return_not_found(self):
+        with patch.object(server.worker,'events',[]):
+            self.assertEqual(self.client.delete('/api/events/missing').status_code,404)
+            self.assertEqual(self.client.post('/api/events/missing/restore').status_code,404)
+
     def test_webm_recording_rejects_other_formats_and_accepts_same_session(self):
         with tempfile.TemporaryDirectory() as temp:
             store=MediaStore(temp);target=SimpleNamespace(session_id='same')

@@ -247,6 +247,8 @@ class StreamWorker:
             for ev in updates:
                 if ev.get('event_type')=='last_seen_update' and not self.notify_last_seen:
                     continue
+                if any(e['event_id'] == ev['event_id'] and e['source_id'] == ev['source_id'] and e.get('deleted_at') is not None for e in self.events):
+                    continue
                 ev = localized_event(ev, self.source, self.session_id if self.is_live else None)
                 if ev.get('source_id') == self.source_id and ev['metadata'].get('playback_source') == self.source:
                     ev['metadata'].setdefault('playback_evidence', dict(session_id=self.session_id,
@@ -852,7 +854,7 @@ class StreamWorker:
         return frame
 
     def _recalc_review_stats(self):
-        current_events = [e for e in self.events if not is_archived_event(e)]
+        current_events = [e for e in self.events if not is_archived_event(e) and e.get('deleted_at') is None]
         total = len(current_events)
         confirmed = sum(1 for e in current_events if e.get("review_status") == "confirmed")
         false_alarm = sum(1 for e in current_events if e.get("review_status") == "false_alarm")
@@ -1049,7 +1051,7 @@ def recording_media(recording_id: str):
 @app.get('/api/events/{event_id}/playback')
 def event_playback(event_id: str):
     with worker.lock:
-        event=next((e for e in worker.events if e['event_id']==event_id),None)
+        event=next((e for e in worker.events if e['event_id']==event_id and e.get('deleted_at') is None),None)
         if not event: raise HTTPException(404,'ไม่พบเหตุการณ์')
         recorded=media_store.for_event(event)
         if recorded:
@@ -1074,7 +1076,7 @@ def event_annotations(event_id: str, seconds: float):
     if not math.isfinite(seconds) or seconds < 0:
         raise HTTPException(400, 'เวลาคลิปไม่ถูกต้อง')
     with worker.lock:
-        event = deepcopy(next((e for e in worker.events if e['event_id'] == event_id), None))
+        event = deepcopy(next((e for e in worker.events if e['event_id'] == event_id and e.get('deleted_at') is None), None))
     if not event: raise HTTPException(404, 'ไม่พบเหตุการณ์')
     reference = event.get('metadata', {}).get('playback_evidence')
     result = dict(event_id=event_id, frames=[], message=None)
@@ -1477,10 +1479,30 @@ def playback_frame_ack(req: FrameAckRequest):
 @app.get("/api/events")
 def get_events(limit: int = 100, category: str = 'all', source_id: Optional[str] = None, include_last_seen: bool = False):
     with worker.lock:
-        return [localized_event(e,e.get('metadata',{}).get('playback_source','')) for e in worker.events if not is_archived_event(e)
+        return [localized_event(e,e.get('metadata',{}).get('playback_source','')) for e in worker.events if not is_archived_event(e) and e.get('deleted_at') is None
                 and (include_last_seen or e.get('event_type')!='last_seen_update')
                 and (category=='all' or event_category(e.get('event_type',''))==category)
                 and (source_id is None or e.get('source_id')==source_id)][:max(1,min(limit,500))]
+
+
+@app.delete('/api/events/{event_id}')
+def delete_event(event_id: str):
+    with worker.lock:
+        event = next((e for e in worker.events if e['event_id'] == event_id), None)
+        if event is None: raise HTTPException(404, 'ไม่พบเหตุการณ์')
+        if event.get('deleted_at') is None: event['deleted_at'] = time.time()
+        worker._recalc_review_stats()
+        return dict(status='deleted', event_id=event_id)
+
+
+@app.post('/api/events/{event_id}/restore')
+def restore_event(event_id: str):
+    with worker.lock:
+        event = next((e for e in worker.events if e['event_id'] == event_id), None)
+        if event is None: raise HTTPException(404, 'เหตุการณ์นี้ไม่อยู่ในรอบปัจจุบันแล้ว')
+        event.pop('deleted_at', None)
+        worker._recalc_review_stats()
+        return dict(status='restored', event_id=event_id)
 
 
 class ReviewEventRequest(BaseModel):
@@ -1493,7 +1515,7 @@ def review_event(event_id: str, req: ReviewEventRequest):
     if req.verdict not in ('confirmed', 'false_alarm', 'needs_review'):
         raise HTTPException(status_code=400, detail='Unsupported review verdict')
     with worker.lock:
-        ev = next((e for e in worker.events if e["event_id"] == event_id), None)
+        ev = next((e for e in worker.events if e["event_id"] == event_id and e.get("deleted_at") is None), None)
         if not ev:
             raise HTTPException(status_code=404, detail="Event not found")
         ev["review_status"] = req.verdict
