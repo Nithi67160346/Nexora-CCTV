@@ -20,6 +20,16 @@ def ffmpeg_binary():
     except (ImportError, RuntimeError): return None
 
 
+def clip_timestamp_ms(capture, frame_number, fps):
+    """Decoded presentation time aligns VFR footage with browser playback."""
+    if not isinstance(capture, CudaCapture):
+        value = capture.get(cv2.CAP_PROP_POS_MSEC)
+        if math.isfinite(value) and (value > 0 or frame_number == 1):
+            return max(0., value), 'presentation'
+    # Raw FFmpeg pipes do not expose PTS; keep their zero-based frame clock.
+    return max(0, frame_number-1)*1000/fps, 'frame_rate'
+
+
 class CudaCapture:
     """NVDEC decode with explicit failure; no silent CPU fallback."""
     def __init__(self, source):

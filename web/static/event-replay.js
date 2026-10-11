@@ -6,6 +6,7 @@ const eventReplayStatus=document.getElementById('event-replay-status');
 let eventReplay=null;
 function closeEventReplay(){
   const previous=eventReplay;eventReplay=null;
+  if(previous?.frameCallback!=null)eventReplayVideo.cancelVideoFrameCallback?.(previous.frameCallback);
   eventReplayModal.classList.add('hidden');
   eventReplayVideo.onloadedmetadata=eventReplayVideo.onseeked=eventReplayVideo.onerror=null;
   eventReplayVideo.pause();eventReplayVideo.removeAttribute('src');eventReplayVideo.load();
@@ -25,10 +26,19 @@ async function playEvent(id){
     eventReplayVideo.onloadedmetadata=async()=>{
       if(eventReplay!==view)return;
       eventReplayVideo.currentTime=Math.min(result.time_s || 0,Math.max(0,eventReplayVideo.duration-.01));
-      view.ready=true;await refreshEventReplay(true);
+      view.ready=true;
+      if(eventReplayVideo.requestVideoFrameCallback){
+        const presented=(now,metadata)=>{
+          if(eventReplay!==view)return;
+          view.frameTime=metadata.mediaTime;
+          view.frameCallback=eventReplayVideo.requestVideoFrameCallback(presented);
+        };
+        view.frameCallback=eventReplayVideo.requestVideoFrameCallback(presented);
+      }
+      await refreshEventReplay(true);
       if(eventReplay===view)eventReplayVideo.play().catch(()=>{eventReplayStatus.textContent+=' • กดเล่นเพื่อดูวิดีโอ';});
     };
-    eventReplayVideo.onseeked=()=>{if(eventReplay===view){view.rows=[];refreshEventReplay(true);}};
+    eventReplayVideo.onseeked=()=>{if(eventReplay===view){view.rows=[];view.frameTime=null;refreshEventReplay(true);}};
     eventReplayVideo.onerror=()=>{
       if(eventReplay!==view)return;
       view.ready=false;view.rows=[];
@@ -53,7 +63,7 @@ async function refreshEventReplay(force=false){
   finally{if(view.serial===serial)view.busy=false;}
 }
 function paintEventReplay(){
-  if(eventReplay?.ready)paintEvidence(eventReplayCanvas,eventReplayVideo,eventReplay.rows,eventReplayVideo.currentTime);
+  if(eventReplay?.ready)paintEvidence(eventReplayCanvas,eventReplayVideo,eventReplay.rows,eventReplay.frameTime ?? eventReplayVideo.currentTime);
   requestAnimationFrame(paintEventReplay);
 }
 requestAnimationFrame(paintEventReplay);setInterval(refreshEventReplay,200);

@@ -90,7 +90,7 @@ class WebcamTests(unittest.TestCase):
         worker.alert_tracks={99:5000}
         worker.pipeline=SimpleNamespace(modules={},flush=Mock(return_value=[]),reset=Mock(),process=Mock(return_value=[]))
         frame=np.full((80,120,3),120,dtype=np.uint8)
-        cam.get.return_value=25
+        cam.get.side_effect=lambda key:0 if key==capture.cv2.CAP_PROP_POS_MSEC else 25
         cam.read.side_effect=[(True,frame),(False,None),(True,frame)]
         timestamps=[]
         def process(*args,**kwargs):
@@ -100,7 +100,7 @@ class WebcamTests(unittest.TestCase):
         worker.core.process.side_effect=process
         with patch.object(server,'open_capture',return_value=cam),patch.object(server.time,'sleep'):
             worker._run_loop(worker.generation_id)
-        self.assertEqual(timestamps,[40,40]);worker.core.reset.assert_called_once()
+        self.assertEqual(timestamps,[0,0]);worker.core.reset.assert_called_once()
         worker.pipeline.reset.assert_called_once_with(worker.source_id)
         self.assertEqual(worker.alert_tracks,{})
         self.assertEqual(len(worker.annotations.frames),1)

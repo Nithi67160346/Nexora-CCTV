@@ -50,7 +50,7 @@ from integration.feature_policy import ARCHIVED_FEATURES, apply_web_feature_poli
 from integration.runtime_identity import launcher_info
 from web.presentation import fall_display
 from web.capture import open_capture, valid_frame, dark_frame
-from web.capture import open_selected_capture, ffmpeg_binary
+from web.capture import open_selected_capture, ffmpeg_binary, clip_timestamp_ms
 from web.browser_capture import BrowserCapture
 from web.event_view import localized_event, event_category
 from web.playback import AnnotationBuffer
@@ -610,7 +610,7 @@ class StreamWorker:
             if self.is_live:
                 ts_ms = cap.timestamp_ms if isinstance(cap,(BrowserCapture,RecordingCapture)) else (time.monotonic() - live_start_time) * 1000.0
             else:
-                ts_ms = frame_count * 1000.0 / fps
+                ts_ms, time_basis = clip_timestamp_ms(cap, frame_count, fps)
 
             if time.monotonic() - fps_timer >= 1.0:
                 self.fps = fps_counter / (time.monotonic() - fps_timer)
@@ -630,6 +630,7 @@ class StreamWorker:
                 with self.lock:
                     if self.generation_id != gen_id:
                         break
+                    context['time_basis'] = 'live' if self.is_live else time_basis
                     context['device'] = self.device
                     context['pose_model'] = self.weights_path.name
                     updates = self.pipeline.process(frame, context) if self.pipeline else []

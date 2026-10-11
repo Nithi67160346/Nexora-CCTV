@@ -3,14 +3,14 @@ const code=fs.readFileSync(require('node:path').join(__dirname,'../../web/static
 const nodes=new Map();let createdElements=0;
 function element(id){
   if(!nodes.has(id)){
-    const classes=new Set(),draw=[],bones=[],joints=[],texts=[];
+    const classes=new Set(),draw=[],rects=[],bones=[],joints=[],texts=[];
     nodes.set(id,{value:'',textContent:'',children:[],listeners:{},addEventListener(name,handler){this.listeners[name]=handler;},paused:true,currentTime:0,duration:10,readyState:4,videoWidth:640,videoHeight:480,clientWidth:640,clientHeight:480,
       classList:{add:(...c)=>c.forEach(v=>classes.add(v)),remove:(...c)=>c.forEach(v=>classes.delete(v)),toggle:(c,on)=>on?classes.add(c):classes.delete(c),contains:c=>classes.has(c)},
       pause(){this.paused=true;},play(){this.paused=false;return Promise.resolve();},load(){},removeAttribute(){},querySelector(){return {};},
       replaceChildren(...c){this.children=c;},append(...c){this.children.push(...c);},
-      getContext(){return {clearRect(){},strokeRect(){draw.push(this.strokeStyle);},fillText(text){texts.push(text);},
+      getContext(){return {clearRect(){},strokeRect(...xy){draw.push(this.strokeStyle);rects.push(xy);},fillText(text){texts.push(text);},
         beginPath(){this.path=[];},moveTo(x,y){this.path.push([x,y]);},lineTo(x,y){this.path.push([x,y]);},
-        stroke(){bones.push({color:this.strokeStyle,points:this.path});},arc(x,y){this.point=[x,y];},fill(){joints.push(this.point);}};},draw,bones,joints,texts});
+        stroke(){bones.push({color:this.strokeStyle,points:this.path});},arc(x,y){this.point=[x,y];},fill(){joints.push(this.point);}};},draw,rects,bones,joints,texts});
   }return nodes.get(id);
 }
 let calls=[],startSuccess=true,timerIndex=0;const networkTimers=new Map();
@@ -110,6 +110,22 @@ async function openArchivedFixture(id){
     'skeleton must align with the video including letterbox offsets');
   assert.equal(skeleton.draw[0],'#ff3333','adding skeletons must preserve red alert boxes');
   context.paintEvidence(skeleton,video,evidence,4);assert.equal(skeleton.bones.length,3,'never draw stale pose');
+
+  // Evidence may be downscaled while the original recording retains full size.
+  const mapped=element('mapped');mapped.clientWidth=800;mapped.clientHeight=600;
+  const large=element('large');large.videoWidth=1920;large.videoHeight=1080;
+  const smallPose=Array.from({length:17},()=>[0,0,0]);
+  smallPose[5]=[120,80,.9];smallPose[6]=[240,80,.9];
+  context.paintEvidence(mapped,large,[{time_s:0,frame_width:960,frame_height:540,
+    persons:[{track_id:1,bbox_xyxy:[96,54,480,270],pose:smallPose}]}],0);
+  assert.deepEqual(mapped.rects[0],[80,120,320,180],'map AI coordinates into the letterboxed original');
+  assert.deepEqual(mapped.joints[0],[100,75+80*5/6],'pose must use the same coordinate transform as boxes');
+  // The canvas and video CSS rectangles can differ, including browser zoom.
+  mapped.getBoundingClientRect=()=>({left:20,top:30,width:1600,height:1200});
+  large.getBoundingClientRect=()=>({left:220,top:130,width:1200,height:800});
+  context.paintEvidence(mapped,large,[{time_s:0,frame_width:960,frame_height:540,
+    persons:[{track_id:1,bbox_xyxy:[96,54,480,270]}]}],0);
+  assert.deepEqual(mapped.rects[1],[160,115,240,135],'include relative CSS origin and zoom, not canvas assumptions');
   await context.setClipLoop(true);context.openReview('loop.mp4');assert.equal(element('native-video').loop,true);
   await context.setClipLoop(false);assert.equal(element('native-video').loop,false);
   context.window.syncReview({is_running:true,is_live:true});assert.equal(element('clip-loop').disabled,true);

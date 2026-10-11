@@ -32,7 +32,17 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../../web/s
   assert.equal(main.source,'main.mp4');assert.equal(main.session,'main-run');
   assert(element('event-replay-main-status').textContent.includes('กำลังประมวลผล'));
   assert(requests.every(call=>!call.body && call.url.startsWith('/api/events/')),'replay must not start/stop/pause/seek/ACK the main worker');
-  context.closeEventReplay();assert(element('event-replay-video').paused);
+  let presented,callbackId=0;const cancelled=[];
+  const video=element('event-replay-video');
+  video.requestVideoFrameCallback=fn=>{presented=fn;return ++callbackId;};
+  video.cancelVideoFrameCallback=id=>cancelled.push(id);
+  await context.playEvent('one');await video.onloadedmetadata();
+  video.currentTime=2.09;presented(0,{mediaTime:2});context.paintEventReplay();
+  assert.equal(painted.at(-1).seconds,2,'overlay must use the decoded frame time, not the advancing playhead');
+  const lastCallback=callbackId;
+  context.closeEventReplay();assert.equal(cancelled.at(-1),lastCallback,'close must cancel the frame callback');
+  presented(0,{mediaTime:9});assert.equal(callbackId,lastCallback,'closed player must not schedule callbacks');
+  assert(element('event-replay-video').paused);
   assert.equal(context.window.framePlayerActive,true);
   assert.equal(element('event-replay-video').src,'');
   let finish;context.productRequest=()=>new Promise(resolve=>finish=resolve);

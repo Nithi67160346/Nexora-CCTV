@@ -230,27 +230,38 @@ async function loadRecordingList(){
 // COCO-17 edges and RGB colors match the server's OpenCV overlay.
 const playbackSkeleton=[[0,1],[0,2],[1,3],[2,4],[0,5],[0,6],[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16]];
 const playbackBoneColors=['#0080ff','#0080ff','#0080ff','#0080ff','#ffff00','#ffff00','#00ff00','#ffc800','#ffc800','#8000ff','#8000ff','#00ff00','#00ff00','#00ff00','#00ffff','#00ffff','#ff00ff','#ff00ff'];
-function paintPlaybackPose(c,person,video,scale,ox,oy){
+function paintPlaybackPose(c,person,geometry){
+  const {width,height,sx,sy,ox,oy}=geometry;
   if(!Array.isArray(person.pose) || person.pose.length!==17)return;
   const [x1,y1,x2,y2]=person.bbox_xyxy;
   const valid=person.pose.map(p=>Array.isArray(p) && p.length>=3 && p.slice(0,3).every(Number.isFinite)
     && p[2]>=.5 && p[2]<=1 && (p[0]!==0 || p[1]!==0)
-    && p[0]>=Math.max(0,x1) && p[0]<Math.min(video.videoWidth,x2+1)
-    && p[1]>=Math.max(0,y1) && p[1]<Math.min(video.videoHeight,y2+1));
+    && p[0]>=Math.max(0,x1) && p[0]<Math.min(width,x2+1)
+    && p[1]>=Math.max(0,y1) && p[1]<Math.min(height,y2+1));
   c.lineWidth=2;
   playbackSkeleton.forEach(([a,b],i)=>{
     if(!valid[a] || !valid[b])return;
     const p=person.pose[a],q=person.pose[b];c.strokeStyle=playbackBoneColors[i];
-    c.beginPath();c.moveTo(ox+p[0]*scale,oy+p[1]*scale);c.lineTo(ox+q[0]*scale,oy+q[1]*scale);c.stroke();
+    c.beginPath();c.moveTo(ox+p[0]*sx,oy+p[1]*sy);c.lineTo(ox+q[0]*sx,oy+q[1]*sy);c.stroke();
   });
   c.fillStyle='#ffff00';
-  person.pose.forEach((p,i)=>{if(valid[i]){c.beginPath();c.arc(ox+p[0]*scale,oy+p[1]*scale,4,0,2*Math.PI);c.fill();}});
+  person.pose.forEach((p,i)=>{if(valid[i]){c.beginPath();c.arc(ox+p[0]*sx,oy+p[1]*sy,4,0,2*Math.PI);c.fill();}});
 }
 function paintEvidence(canvas,video,rows,seconds) {
   canvas.width=canvas.clientWidth;canvas.height=canvas.clientHeight;const c=canvas.getContext('2d');c.clearRect(0,0,canvas.width,canvas.height);
   const row=rows.reduce((best,r)=>!best || Math.abs(r.time_s-seconds)<Math.abs(best.time_s-seconds)?r:best,null);
   if(!row || Math.abs(row.time_s-seconds)>.1 || !video.videoWidth)return;
-  const scale=Math.min(canvas.width/video.videoWidth,canvas.height/video.videoHeight),ox=(canvas.width-video.videoWidth*scale)/2,oy=(canvas.height-video.videoHeight*scale)/2;
+
+  // Map evidence pixels into the actual object-contain image, including CSS zoom.
+  const vr=video.getBoundingClientRect?.(),cr=canvas.getBoundingClientRect?.();
+  const dx=cr?.width>0?canvas.width/cr.width:1,dy=cr?.height>0?canvas.height/cr.height:1;
+  const vw=vr?.width>0?vr.width:canvas.width,vh=vr?.height>0?vr.height:canvas.height;
+  const scale=Math.min(vw/video.videoWidth,vh/video.videoHeight);
+  const left=vr && cr?vr.left-cr.left:0,top=vr && cr?vr.top-cr.top:0;
+  const ox=(left+(vw-video.videoWidth*scale)/2)*dx,oy=(top+(vh-video.videoHeight*scale)/2)*dy;
+  const width=row.frame_width || video.videoWidth,height=row.frame_height || video.videoHeight;
+  const sx=video.videoWidth*scale*dx/width,sy=video.videoHeight*scale*dy/height;
+  const geometry={width,height,sx,sy,ox,oy};
   c.font='14px sans-serif';
   const scene=row.violence?.result;
   if(scene){
@@ -259,10 +270,10 @@ function paintEvidence(canvas,video,rows,seconds) {
   }
   for(const p of row.persons){const [x1,y1,x2,y2]=p.bbox_xyxy,phase=p.fall?.phase;
     const red=p.alert || phase==='FALL_DETECTED',warn=['WARMING_UP','CONFIRMING','POSTURE_REVIEW','POSTURE_CHECK','UNAVAILABLE','ABNORMAL_MOVEMENT'].includes(phase);
-    paintPlaybackPose(c,p,video,scale,ox,oy);
-    c.strokeStyle=red?'#ff3333':warn?'#ffb020':'#22dd66';c.lineWidth=3;c.strokeRect(ox+x1*scale,oy+y1*scale,(x2-x1)*scale,(y2-y1)*scale);
+    paintPlaybackPose(c,p,geometry);
+    c.strokeStyle=red?'#ff3333':warn?'#ffb020':'#22dd66';c.lineWidth=3;c.strokeRect(ox+x1*sx,oy+y1*sy,(x2-x1)*sx,(y2-y1)*sy);
     const fallScore=p.fall?.backend==='yolo_pose_rf_v2' && p.fall.fall_score!=null?` • ล้ม V2 ${(p.fall.fall_score*100).toFixed(1)}%`:'';
-    c.fillStyle=c.strokeStyle;c.fillText(`คน #${p.track_id}${fallScore}${red?' • มีเหตุเตือน':p.observation_kind==='bbox_only'?' • ข้อต่อไม่พร้อม':warn?' • กำลังตรวจสอบ':''}`,Math.max(0,Math.min(canvas.width-260,ox+x1*scale)),Math.max(16,oy+y1*scale-5));
+    c.fillStyle=c.strokeStyle;c.fillText(`คน #${p.track_id}${fallScore}${red?' • มีเหตุเตือน':p.observation_kind==='bbox_only'?' • ข้อต่อไม่พร้อม':warn?' • กำลังตรวจสอบ':''}`,Math.max(0,Math.min(canvas.width-260,ox+x1*sx)),Math.max(16,oy+y1*sy-5));
   }
 }
 function paintReview(){if(reviewView.active && (!reviewView.archive || reviewView.evidenceUrl)){updateAIPlayback();paintEvidence(reviewCanvas,reviewVideo,reviewView.rows,reviewVideo.currentTime);}requestAnimationFrame(paintReview);}

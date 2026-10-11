@@ -72,6 +72,8 @@ class AnnotationBuffer:
             p['alert'] = p['track_id'] in retained_ids or any(p['track_id'] in e.get('track_ids', []) and e.get('severity') in ('high','critical','medium','warning') for e in alerts)
             people.append(p)
         row = dict(frame_id=context['frame_id'], time_s=context['timestamp_ms']/1000, persons=people)
+        for key in ('frame_width', 'frame_height', 'fps', 'time_basis'):
+            if key in context: row[key] = context[key]
         if 'violence' in context:
             row['violence'] = deepcopy(context['violence'])
         with self.lock:

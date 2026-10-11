@@ -104,6 +104,28 @@ class EvidenceTests(unittest.TestCase):
         row=buffer.near(2)[0];self.assertTrue(row['persons'][0]['alert'])
         row['persons'][0]['alert']=False
         self.assertTrue(buffer.near(2)[0]['persons'][0]['alert'])
+    def test_evidence_preserves_coordinate_space_in_memory_and_archive(self):
+        with tempfile.TemporaryDirectory() as folder:
+            buffer=AnnotationBuffer(1);buffer.enable_disk(folder)
+            buffer.add(dict(source_id='cam',frame_id=1,timestamp_ms=123.4,persons=[],
+                            frame_width=960,frame_height=540,fps=25,time_basis='presentation'),None,[])
+            filename=buffer.cache_path.name
+            buffer.close()
+            for row in (buffer.near(.1234)[0],AnnotationBuffer.read_cached(folder,filename,.1234)[0]):
+                self.assertEqual((row['frame_width'],row['frame_height']),(960,540))
+                self.assertAlmostEqual(row['time_s'],.1234)
+                self.assertEqual(row['time_basis'],'presentation')
+
+    def test_clip_clock_uses_presentation_time_and_zero_based_fallback(self):
+        from web.capture import clip_timestamp_ms, CudaCapture
+        cap=SimpleNamespace(get=lambda key:146.7)
+        self.assertEqual(clip_timestamp_ms(cap,4,30),(146.7,'presentation'))
+        self.assertEqual(clip_timestamp_ms(SimpleNamespace(get=lambda key:0),1,25),(0,'presentation'))
+        self.assertEqual(clip_timestamp_ms(SimpleNamespace(get=lambda key:float('nan')),2,25),(40,'frame_rate'))
+        raw=CudaCapture.__new__(CudaCapture)
+        self.assertEqual(clip_timestamp_ms(raw,1,25),(0,'frame_rate'))
+        self.assertEqual(clip_timestamp_ms(raw,101,25),(4000,'frame_rate'))
+
     def test_event_reference_is_immutable_when_room_changes_clip(self):
         event=dict(event_id='x',event_type='fall_detected',source_id='cam',metadata={})
         first=localized_event(event,'first.mp4','a')

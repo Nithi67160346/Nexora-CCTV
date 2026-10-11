@@ -38,7 +38,8 @@ class SharedYoloCore:
                         center_xy=[(x1 + x2) / 2, (y1 + y2) / 2],
                         pose=poses[i] if poses is not None else None))
         context = dict(schema_version="1.0", source_id=source_id, frame_id=frame_id,
-                       timestamp_ms=timestamp_ms, fps=fps, persons=persons)
+                       timestamp_ms=timestamp_ms, fps=fps, persons=persons,
+                       frame_width=int(frame.shape[1]), frame_height=int(frame.shape[0]))
         filtered = self.person_filter.process(context, frame.shape, require_pose=require_pose)
         boxes = results[0].boxes if results else None
         scores = getattr(boxes, 'conf', None)
